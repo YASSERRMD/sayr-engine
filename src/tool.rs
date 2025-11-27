@@ -38,7 +38,10 @@ impl ToolRegistry {
         let tool = self.tools.get(name).ok_or_else(|| AgnoError::ToolNotFound(name.to_string()))?;
         tool.call(input)
             .await
-            .map_err(|source| AgnoError::ToolInvocation { name: name.to_string(), source })
+            .map_err(|source| AgnoError::ToolInvocation {
+                name: name.to_string(),
+                source: Box::new(source),
+            })
     }
 }
 

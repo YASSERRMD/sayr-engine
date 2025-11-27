@@ -54,12 +54,14 @@ impl Message {
     }
 
     pub fn tool(name: impl Into<String>, output: serde_json::Value) -> Self {
+        let name = name.into();
+
         Self {
             role: Role::Tool,
-            content: format!("Result from `{}`", name.into()),
+            content: format!("Result from `{}`", name),
             tool_call: None,
             tool_result: Some(ToolResult {
-                name: name.into(),
+                name: name.clone(),
                 output,
             }),
         }
