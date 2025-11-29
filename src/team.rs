@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -18,7 +18,7 @@ pub enum TeamEvent {
 /// A coordination surface for multiple agents that share context and a message bus.
 pub struct Team<M: LanguageModel> {
     name: String,
-    members: HashMap<String, Arc<Mutex<Agent<M>>>>,
+    members: BTreeMap<String, Arc<Mutex<Agent<M>>>>,
     shared_memory: Arc<RwLock<ConversationMemory>>,
     shared_context: Arc<RwLock<Value>>,
     knowledge: Arc<RwLock<Vec<String>>>,
@@ -44,7 +44,7 @@ impl<M: LanguageModel> Team<M> {
         let (tx, _) = broadcast::channel(128);
         Self {
             name: name.into(),
-            members: HashMap::new(),
+            members: BTreeMap::new(),
             shared_memory: Arc::new(RwLock::new(ConversationMemory::default())),
             shared_context: Arc::new(RwLock::new(Value::Null)),
             knowledge: Arc::new(RwLock::new(Vec::new())),
