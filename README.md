@@ -4,14 +4,25 @@ Rust-native scaffolding inspired by the [agno](https://github.com/agno-agi/agno)
 
 ## Workspace layout
 
-- `libs/agno-core`: Core library that exposes the agent loop, tool registry, transcript memory, and stub language model used for testing. Tools can optionally publish JSON argument schemas that are embedded in prompts.
-- `cookbook/echo-agent`: A small binary crate demonstrating how to wire tools and a scripted language model into an interactive agent.
+- `libs/agno-core`: Minimal agent loop, registry, transcript memory, and stub language model used for testing.
+- `agno-rust` (root crate): Full runtime surface mirroring the upstream Python implementation — governance, telemetry, metrics, deployments, workflows, and a lightweight HTTP runtime.
+- `cookbook/echo-agent`: Binary crate demonstrating how to wire tools and a scripted language model into an interactive agent.
+- `cookbook/observability-demo`: Shows RBAC, retries, metrics, and telemetry stitched into an agent run.
 - `scripts/check.sh`: Convenience script to format the workspace and run the full test suite.
 
-## agno-core quickstart
+## Feature parity highlights
+
+- **Tooling:** Tools expose names, descriptions, and optional JSON parameter schemas that are embedded into model prompts so the LLM understands expected arguments. Tool descriptions are deterministic and serializable for UIs or remote runtimes.
+- **RBAC & privacy:** `AccessController`, `Principal`, and `PrivacyRule` let you block tool calls or redact payloads per tenant.
+- **Metrics & telemetry:** `MetricsTracker`, `RetryPolicy`, `FallbackChain`, and `TelemetryCollector` capture reliability signals, failures, and retry attempts.
+- **Knowledge & memory:** In-memory vector store, retrievers, and transcript memory let agents ground responses in past context.
+- **Workflows & teams:** Build directed workflows, coordinate multiple agents, and expose them over `AgentRuntime`'s HTTP dashboard and SSE event stream.
+- **Config & deployment:** Load configs from files or env overrides and emit container-ready `DeploymentPlan` manifests.
+
+## Quickstart (root crate)
 
 ```rust
-use agno_core::{Agent, LanguageModel, StubModel, Tool, ToolRegistry};
+use agno_rust::{Agent, LanguageModel, StubModel, Tool, ToolRegistry};
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -21,14 +32,22 @@ struct Echo;
 impl Tool for Echo {
     fn name(&self) -> &str { "echo" }
     fn description(&self) -> &str { "Echoes the input JSON back" }
-    async fn call(&self, input: Value) -> agno_core::Result<Value> { Ok(input) }
+    fn parameters(&self) -> Option<Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {"text": {"type": "string"}},
+            "required": ["text"],
+        }))
+    }
+
+    async fn call(&self, input: Value) -> agno_rust::Result<Value> { Ok(input) }
 }
 
 #[tokio::main]
-async fn main() -> agno_core::Result<()> {
+async fn main() -> agno_rust::Result<()> {
     let model = StubModel::new(vec![
-        r#"{"action":"call_tool","name":"echo","arguments":{"text":"hi"}}"#.into(),
-        r#"{"action":"respond","content":"Echo complete."}"#.into(),
+        r#"{\"action\":\"call_tool\",\"name\":\"echo\",\"arguments\":{\"text\":\"hi\"}}"#.into(),
+        r#"{\"action\":\"respond\",\"content\":\"Echo complete.\"}"#.into(),
     ]);
 
     let mut tools = ToolRegistry::new();
@@ -41,14 +60,6 @@ async fn main() -> agno_core::Result<()> {
     Ok(())
 }
 ```
-
-## Operational tooling
-
-- **RBAC & governance:** `AccessController`, `Principal`, and privacy rules let you block tool calls or redact payloads per tenant.
-- **Metrics:** `MetricsTracker` captures duration, memory, tool-call counts, and success/failure ratios to audit agent reliability.
-- **Telemetry:** `TelemetryCollector`, `RetryPolicy`, and `FallbackChain` record failures while adding automatic retries and fallbacks for brittle integrations.
-- **Config & deployment:** Load `AppConfig` from files or environment overrides and render container-ready manifests with `DeploymentPlan`.
-- **Cookbook:** Check `cookbook/observability-demo` and `cookbook/templates/app-config.toml` for ready-to-run examples.
 
 ## Cookbook example
 
