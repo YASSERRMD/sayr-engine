@@ -8,11 +8,11 @@ use crate::governance::{AccessController, Action, Principal, Role as GovernanceR
 use crate::hooks::{AgentHook, ConfirmationHandler};
 use crate::knowledge::Retriever;
 use crate::llm::LanguageModel;
-use crate::metrics::{MetricsTracker, RunGuard};
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
-use crate::tool::ToolRegistry;
+use crate::metrics::{MetricsTracker, RunGuard};
 use crate::telemetry::TelemetryCollector;
+use crate::tool::ToolRegistry;
 
 /// Structured instructions the language model should emit.
 #[derive(Debug, Deserialize, PartialEq)]
@@ -315,8 +315,12 @@ impl<M: LanguageModel> Agent<M> {
             prompt.push_str("No tools are available.\n\n");
         } else {
             prompt.push_str("Available tools:\n");
-            for name in self.tools.names() {
-                prompt.push_str(&format!("- {name}\n"));
+            for tool in self.tools.describe() {
+                prompt.push_str(&format!("- {}: {}", tool.name, tool.description));
+                if let Some(params) = &tool.parameters {
+                    prompt.push_str(&format!(" (parameters: {})", params));
+                }
+                prompt.push('\n');
             }
             prompt.push('\n');
         }
@@ -417,5 +421,39 @@ mod tests {
 
         assert_eq!(reply, "Echoed your request.");
         assert_eq!(agent.memory().len(), 4);
+    }
+
+    #[tokio::test]
+    async fn includes_tool_metadata_in_prompt() {
+        struct DescribingTool;
+
+        #[async_trait]
+        impl Tool for DescribingTool {
+            fn name(&self) -> &str {
+                "describe"
+            }
+
+            fn description(&self) -> &str {
+                "Replies with metadata"
+            }
+
+            fn parameters(&self) -> Option<Value> {
+                Some(serde_json::json!({"type":"object","properties":{"id":{"type":"string"}}}))
+            }
+
+            async fn call(&self, _input: Value) -> Result<Value> {
+                Ok(serde_json::json!({"ok": true}))
+            }
+        }
+
+        let model = StubModel::new(vec![r#"{"action":"respond","content":"done"}"#.into()]);
+        let mut tools = ToolRegistry::new();
+        tools.register(DescribingTool);
+
+        let agent = Agent::new(model).with_tools(tools);
+        let prompt = agent.build_prompt().await.unwrap();
+
+        assert!(prompt.contains("describe: Replies with metadata"));
+        assert!(prompt.contains("parameters"));
     }
 }

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::error::{AgnoError, Result};
@@ -20,7 +21,7 @@ pub trait Tool: Send + Sync {
 }
 
 /// Static description of a tool that can be embedded in prompts.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ToolDescription {
     pub name: String,
     pub description: String,
@@ -48,14 +49,18 @@ impl ToolRegistry {
     }
 
     pub fn describe(&self) -> Vec<ToolDescription> {
-        self.tools
+        let mut descriptions: Vec<ToolDescription> = self
+            .tools
             .values()
             .map(|tool| ToolDescription {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
                 parameters: tool.parameters(),
             })
-            .collect()
+            .collect();
+
+        descriptions.sort_by(|a, b| a.name.cmp(&b.name));
+        descriptions
     }
 
     pub async fn call(&self, name: &str, input: Value) -> Result<Value> {
@@ -69,5 +74,54 @@ impl ToolRegistry {
                 name: name.to_string(),
                 source: Box::new(source),
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+
+    struct First;
+    struct Second;
+
+    #[async_trait]
+    impl Tool for First {
+        fn name(&self) -> &str {
+            "a_first"
+        }
+
+        fn description(&self) -> &str {
+            "First tool"
+        }
+
+        async fn call(&self, input: Value) -> Result<Value> {
+            Ok(input)
+        }
+    }
+
+    #[async_trait]
+    impl Tool for Second {
+        fn name(&self) -> &str {
+            "second"
+        }
+
+        fn description(&self) -> &str {
+            "Second tool"
+        }
+
+        async fn call(&self, input: Value) -> Result<Value> {
+            Ok(input)
+        }
+    }
+
+    #[tokio::test]
+    async fn returns_sorted_descriptions() {
+        let mut registry = ToolRegistry::new();
+        registry.register(Second);
+        registry.register(First);
+
+        let names: Vec<String> = registry.describe().into_iter().map(|d| d.name).collect();
+        assert_eq!(names, vec!["a_first", "second"]);
     }
 }
