@@ -105,6 +105,14 @@ impl<M: LanguageModel> Agent<M> {
         &self.memory
     }
 
+    pub fn sync_memory_from(&mut self, memory: &ConversationMemory) {
+        self.memory = memory.clone();
+    }
+
+    pub fn take_memory_snapshot(&self) -> ConversationMemory {
+        self.memory.clone()
+    }
+
     /// Run a single exchange with the agent. Returns the final assistant reply.
     pub async fn respond(&mut self, user_input: impl Into<String>) -> Result<String> {
         self.memory.push(Message::user(user_input));
