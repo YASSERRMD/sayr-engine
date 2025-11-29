@@ -25,4 +25,7 @@ pub enum AgnoError {
 
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }

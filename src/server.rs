@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::response::sse::{Event, Sse};
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::Json;
 use axum::Router;
@@ -19,11 +19,20 @@ use tokio_stream::wrappers::BroadcastStream;
 use crate::llm::LanguageModel;
 use crate::{Result, Team, Workflow};
 
-#[derive(Clone)]
 pub struct AgentRuntime<M: LanguageModel + 'static> {
     pub teams: Arc<RwLock<HashMap<String, Team<M>>>>,
     pub workflows: Arc<RwLock<HashMap<String, Arc<Workflow>>>>,
     pub events: broadcast::Sender<String>,
+}
+
+impl<M: LanguageModel + 'static> Clone for AgentRuntime<M> {
+    fn clone(&self) -> Self {
+        Self {
+            teams: Arc::clone(&self.teams),
+            workflows: Arc::clone(&self.workflows),
+            events: self.events.clone(),
+        }
+    }
 }
 
 impl<M: LanguageModel + 'static> AgentRuntime<M> {
@@ -57,8 +66,8 @@ impl<M: LanguageModel + 'static> AgentRuntime<M> {
             .route("/invoke", post(run_workflow::<M>))
             .with_state(self.clone());
 
-        axum::Server::bind(&addr)
-            .serve(app.into_make_service())
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app.into_make_service())
             .await
             .map_err(|err| crate::error::AgnoError::Protocol(format!("server error: {err}")))?;
         Ok(())
@@ -122,7 +131,7 @@ struct WorkflowRequest {
 async fn run_workflow<M: LanguageModel + 'static>(
     State(state): State<AgentRuntime<M>>,
     Json(req): Json<WorkflowRequest>,
-) -> impl IntoResponse {
+) -> Response {
     let flow = { state.workflows.read().await.get(&req.name).cloned() };
     if let Some(flow) = flow {
         let mut ctx = crate::WorkflowContext::default();
@@ -131,7 +140,7 @@ async fn run_workflow<M: LanguageModel + 'static>(
                 let _ = state
                     .events
                     .send(format!("workflow:{} completed", flow.name));
-                Json(json!({ "result": value, "state": ctx.state }))
+                Json(json!({ "result": value, "state": ctx.state })).into_response()
             }
             Err(err) => (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,

@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -30,34 +31,29 @@ pub trait WorkflowTask: Send + Sync {
     async fn run(&self, ctx: &mut WorkflowContext) -> Result<Value>;
 }
 
+type TaskFuture<'a> = Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>>;
+
 /// Wrap a plain async function as a workflow task.
-pub struct FunctionTask<F, Fut>
+pub struct FunctionTask<F>
 where
-    F: Send + Sync + Fn(&mut WorkflowContext) -> Fut,
-    Fut: Future<Output = Result<Value>> + Send,
+    F: for<'a> Fn(&'a mut WorkflowContext) -> TaskFuture<'a> + Send + Sync,
 {
     func: F,
-    _marker: std::marker::PhantomData<Fut>,
 }
 
-impl<F, Fut> FunctionTask<F, Fut>
+impl<F> FunctionTask<F>
 where
-    F: Send + Sync + Fn(&mut WorkflowContext) -> Fut,
-    Fut: Future<Output = Result<Value>> + Send,
+    F: for<'a> Fn(&'a mut WorkflowContext) -> TaskFuture<'a> + Send + Sync,
 {
     pub fn new(func: F) -> Self {
-        Self {
-            func,
-            _marker: std::marker::PhantomData,
-        }
+        Self { func }
     }
 }
 
 #[async_trait]
-impl<F, Fut> WorkflowTask for FunctionTask<F, Fut>
+impl<F> WorkflowTask for FunctionTask<F>
 where
-    F: Send + Sync + Fn(&mut WorkflowContext) -> Fut,
-    Fut: Future<Output = Result<Value>> + Send,
+    F: for<'a> Fn(&'a mut WorkflowContext) -> TaskFuture<'a> + Send + Sync,
 {
     async fn run(&self, ctx: &mut WorkflowContext) -> Result<Value> {
         (self.func)(ctx).await
@@ -128,56 +124,56 @@ pub enum WorkflowNode {
 }
 
 impl WorkflowNode {
-    async fn execute(&self, ctx: &mut WorkflowContext) -> Result<Value> {
-        match self {
-            WorkflowNode::Task(task) => task.run(ctx).await,
-            WorkflowNode::Sequence(steps) => {
-                let mut last = Value::Null;
-                for step in steps {
-                    last = step.execute(ctx).await?;
-                }
-                Ok(last)
-            }
-            WorkflowNode::Parallel(steps) => {
-                let futures = steps.iter().map(|step| {
-                    let mut ctx_clone = ctx.clone();
-                    async move { step.execute(&mut ctx_clone).await }
-                });
-                let results = join_all(futures).await;
-                let mut combined = Vec::new();
-                for res in results {
-                    combined.push(res?);
-                }
-                Ok(Value::Array(combined))
-            }
-            WorkflowNode::Conditional {
-                condition,
-                then_branch,
-                else_branch,
-            } => {
-                if condition(ctx) {
-                    then_branch.execute(ctx).await
-                } else if let Some(other) = else_branch {
-                    other.execute(ctx).await
-                } else {
-                    Ok(Value::Null)
-                }
-            }
-            WorkflowNode::Loop {
-                condition,
-                body,
-                max_iterations,
-            } => {
-                let mut last = Value::Null;
-                for _ in 0..*max_iterations {
-                    if !(condition)(ctx) {
-                        break;
+    fn execute<'a>(
+        &'a self,
+        ctx: &'a mut WorkflowContext,
+    ) -> std::pin::Pin<Box<dyn Future<Output = Result<Value>> + Send + 'a>> {
+        Box::pin(async move {
+            match self {
+                WorkflowNode::Task(task) => task.run(ctx).await,
+                WorkflowNode::Sequence(steps) => {
+                    let mut last = Value::Null;
+                    for step in steps {
+                        last = step.execute(ctx).await?;
                     }
-                    last = body.execute(ctx).await?;
+                    Ok(last)
                 }
-                Ok(last)
+                WorkflowNode::Parallel(steps) => {
+                    let mut combined = Vec::new();
+                    for step in steps {
+                        combined.push(step.execute(ctx).await?);
+                    }
+                    Ok(Value::Array(combined))
+                }
+                WorkflowNode::Conditional {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } => {
+                    if condition(ctx) {
+                        then_branch.execute(ctx).await
+                    } else if let Some(other) = else_branch {
+                        other.execute(ctx).await
+                    } else {
+                        Ok(Value::Null)
+                    }
+                }
+                WorkflowNode::Loop {
+                    condition,
+                    body,
+                    max_iterations,
+                } => {
+                    let mut last = Value::Null;
+                    for _ in 0..*max_iterations {
+                        if !(condition)(ctx) {
+                            break;
+                        }
+                        last = body.execute(ctx).await?;
+                    }
+                    Ok(last)
+                }
             }
-        }
+        })
     }
 }
 
@@ -207,14 +203,18 @@ mod tests {
 
     #[tokio::test]
     async fn executes_sequential_and_parallel_nodes() {
-        let task_a = FunctionTask::new(|ctx: &mut WorkflowContext| async move {
-            ctx.insert("a", json!(1));
-            Ok(json!("done"))
+        let task_a = FunctionTask::new(|ctx: &mut WorkflowContext| {
+            Box::pin(async move {
+                ctx.insert("a", json!(1));
+                Ok(json!("done"))
+            })
         });
-        let task_b = FunctionTask::new(|ctx: &mut WorkflowContext| async move {
-            let current = ctx.get("a").and_then(|v| v.as_i64()).unwrap_or(0);
-            ctx.insert("b", json!(current + 1));
-            Ok(json!("b"))
+        let task_b = FunctionTask::new(|ctx: &mut WorkflowContext| {
+            Box::pin(async move {
+                let current = ctx.get("a").and_then(|v| v.as_i64()).unwrap_or(0);
+                ctx.insert("b", json!(current + 1));
+                Ok(json!("b"))
+            })
         });
 
         let flow = Workflow::new(
@@ -224,9 +224,11 @@ mod tests {
                 WorkflowNode::Parallel(vec![
                     WorkflowNode::Task(Arc::new(task_b)),
                     WorkflowNode::Task(Arc::new(FunctionTask::new(
-                        |ctx: &mut WorkflowContext| async move {
-                            ctx.insert("c", json!(true));
-                            Ok(json!("c"))
+                        |ctx: &mut WorkflowContext| {
+                            Box::pin(async move {
+                                ctx.insert("c", json!(true));
+                                Ok(json!("c"))
+                            })
                         },
                     ))),
                 ]),
@@ -244,10 +246,13 @@ mod tests {
     #[tokio::test]
     async fn executes_conditional_loop() {
         let body = WorkflowNode::Task(Arc::new(FunctionTask::new(
-            |ctx: &mut WorkflowContext| async move {
-                let next = ctx.get("count").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
-                ctx.insert("count", json!(next));
-                Ok(json!(next))
+            |ctx: &mut WorkflowContext| {
+                Box::pin(async move {
+                    let next =
+                        ctx.get("count").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
+                    ctx.insert("count", json!(next));
+                    Ok(json!(next))
+                })
             },
         )));
 
