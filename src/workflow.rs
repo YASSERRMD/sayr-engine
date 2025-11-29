@@ -3,7 +3,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures::future::join_all;
 use serde_json::{Map, Value};
 
 use crate::agent::Agent;

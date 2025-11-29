@@ -42,6 +42,14 @@ async fn main() -> agno_core::Result<()> {
 }
 ```
 
+## Operational tooling
+
+- **RBAC & governance:** `AccessController`, `Principal`, and privacy rules let you block tool calls or redact payloads per tenant.
+- **Metrics:** `MetricsTracker` captures duration, memory, tool-call counts, and success/failure ratios to audit agent reliability.
+- **Telemetry:** `TelemetryCollector`, `RetryPolicy`, and `FallbackChain` record failures while adding automatic retries and fallbacks for brittle integrations.
+- **Config & deployment:** Load `AppConfig` from files or environment overrides and render container-ready manifests with `DeploymentPlan`.
+- **Cookbook:** Check `cookbook/observability-demo` and `cookbook/templates/app-config.toml` for ready-to-run examples.
+
 ## Cookbook example
 
 To run the `echo-agent` cookbook binary:

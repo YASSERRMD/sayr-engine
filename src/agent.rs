@@ -4,12 +4,15 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::{AgnoError, Result};
+use crate::governance::{AccessController, Action, Principal, Role as GovernanceRole};
 use crate::hooks::{AgentHook, ConfirmationHandler};
 use crate::knowledge::Retriever;
 use crate::llm::LanguageModel;
+use crate::metrics::{MetricsTracker, RunGuard};
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
 use crate::tool::ToolRegistry;
+use crate::telemetry::TelemetryCollector;
 
 /// Structured instructions the language model should emit.
 #[derive(Debug, Deserialize, PartialEq)]
@@ -32,6 +35,10 @@ pub struct Agent<M: LanguageModel> {
     retriever: Option<Arc<dyn Retriever>>,
     require_tool_confirmation: bool,
     confirmation_handler: Option<Arc<dyn ConfirmationHandler>>,
+    access_control: Option<Arc<AccessController>>,
+    principal: Principal,
+    metrics: Option<MetricsTracker>,
+    telemetry: Option<TelemetryCollector>,
 }
 
 impl<M: LanguageModel> Agent<M> {
@@ -48,6 +55,14 @@ impl<M: LanguageModel> Agent<M> {
             retriever: None,
             require_tool_confirmation: false,
             confirmation_handler: None,
+            access_control: None,
+            principal: Principal {
+                id: "anonymous".into(),
+                role: GovernanceRole::User,
+                tenant: None,
+            },
+            metrics: None,
+            telemetry: None,
         }
     }
 
@@ -63,6 +78,26 @@ impl<M: LanguageModel> Agent<M> {
 
     pub fn with_memory(mut self, memory: ConversationMemory) -> Self {
         self.memory = memory;
+        self
+    }
+
+    pub fn with_access_control(mut self, controller: Arc<AccessController>) -> Self {
+        self.access_control = Some(controller);
+        self
+    }
+
+    pub fn with_principal(mut self, principal: Principal) -> Self {
+        self.principal = principal;
+        self
+    }
+
+    pub fn with_metrics(mut self, metrics: MetricsTracker) -> Self {
+        self.metrics = Some(metrics);
+        self
+    }
+
+    pub fn with_telemetry(mut self, telemetry: TelemetryCollector) -> Self {
+        self.telemetry = Some(telemetry);
         self
     }
 
@@ -115,6 +150,31 @@ impl<M: LanguageModel> Agent<M> {
 
     /// Run a single exchange with the agent. Returns the final assistant reply.
     pub async fn respond(&mut self, user_input: impl Into<String>) -> Result<String> {
+        let principal = self.principal.clone();
+        self.respond_for(principal, user_input).await
+    }
+
+    pub async fn respond_for(
+        &mut self,
+        principal: Principal,
+        user_input: impl Into<String>,
+    ) -> Result<String> {
+        if let Some(ctrl) = &self.access_control {
+            if !ctrl.authorize(&principal, &Action::SendMessage) {
+                return Err(AgnoError::Protocol(
+                    "principal not authorized to send messages".into(),
+                ));
+            }
+        }
+
+        if let Some(telemetry) = &self.telemetry {
+            telemetry.record(
+                "user_message",
+                serde_json::json!({"principal": principal.id.clone(), "tenant": principal.tenant}),
+            );
+        }
+
+        let mut run_guard: Option<RunGuard> = self.metrics.as_ref().map(|m| m.start_run());
         self.memory.push(Message::user(user_input));
 
         for _ in 0..self.max_steps {
@@ -136,9 +196,23 @@ impl<M: LanguageModel> Agent<M> {
             match directive {
                 AgentDirective::Respond { content } => {
                     self.memory.push(Message::assistant(&content));
+                    if let Some(guard) = run_guard.take() {
+                        guard.finish(true);
+                    }
                     return Ok(content);
                 }
                 AgentDirective::CallTool { name, arguments } => {
+                    if let Some(ctrl) = &self.access_control {
+                        if !ctrl.authorize(&principal, &Action::CallTool(name.clone())) {
+                            if let Some(guard) = run_guard.as_mut() {
+                                guard.record_failure();
+                            }
+                            return Err(AgnoError::Protocol(format!(
+                                "principal `{}` not allowed to call tool `{}`",
+                                principal.id, name
+                            )));
+                        }
+                    }
                     if self.require_tool_confirmation {
                         if let Some(handler) = &self.confirmation_handler {
                             let approved = handler
@@ -149,11 +223,14 @@ impl<M: LanguageModel> Agent<M> {
                                 .await?;
                             if !approved {
                                 self.memory.push(Message::assistant(format!(
-                                    "Tool call `{name}` rejected by guardrail"
+                                    "Tool call `{name}` rejected by guardrail",
                                 )));
                                 continue;
                             }
                         }
+                    }
+                    if let Some(guard) = run_guard.as_mut() {
+                        guard.record_tool_call();
                     }
                     self.memory.push(Message {
                         role: Role::Assistant,
@@ -178,7 +255,22 @@ impl<M: LanguageModel> Agent<M> {
                         )
                         .await?;
                     }
-                    let output = self.tools.call(&name, arguments).await?;
+                    let output = match self.tools.call(&name, arguments.clone()).await {
+                        Ok(value) => value,
+                        Err(err) => {
+                            if let Some(guard) = run_guard.as_mut() {
+                                guard.record_failure();
+                            }
+                            if let Some(telemetry) = &self.telemetry {
+                                telemetry.record_failure(
+                                    format!("tool::{name}"),
+                                    format!("{err}"),
+                                    0,
+                                );
+                            }
+                            return Err(err);
+                        }
+                    };
                     let result_message = Message::tool(&name, output);
                     for hook in &self.hooks {
                         if let Some(result) = result_message.tool_result.as_ref() {
@@ -188,6 +280,10 @@ impl<M: LanguageModel> Agent<M> {
                     self.memory.push(result_message);
                 }
             }
+        }
+
+        if let Some(guard) = run_guard {
+            guard.finish(false);
         }
 
         Err(AgnoError::Protocol(
