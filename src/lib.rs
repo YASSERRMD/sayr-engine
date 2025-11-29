@@ -12,9 +12,12 @@ mod knowledge;
 mod llm;
 mod memory;
 mod message;
+mod server;
 mod storage;
+mod team;
 mod tool;
 mod toolkit;
+mod workflow;
 
 pub use agent::{Agent, AgentDirective};
 pub use error::{AgnoError, Result};
@@ -26,6 +29,11 @@ pub use knowledge::{
 pub use llm::{LanguageModel, StubModel};
 pub use memory::{ConversationMemory, PersistentConversationMemory};
 pub use message::{Attachment, AttachmentKind, Message, Role, ToolCall, ToolResult};
+pub use server::AgentRuntime;
 pub use storage::{ConversationStore, FileConversationStore, SqlConversationStore};
+pub use team::{Team, TeamEvent};
 pub use tool::{Tool, ToolRegistry};
 pub use toolkit::basic_toolkit;
+pub use workflow::{
+    AgentTask, FunctionTask, Workflow, WorkflowContext, WorkflowNode, WorkflowTask,
+};
