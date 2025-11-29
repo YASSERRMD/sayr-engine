@@ -1,5 +1,26 @@
 use serde::{Deserialize, Serialize};
 
+/// A non-textual payload that can accompany a message.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct Attachment {
+    pub kind: AttachmentKind,
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+}
+
+/// Types of attachments supported by the runtime.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub enum AttachmentKind {
+    File,
+    Image,
+    Audio,
+    Video,
+    Other,
+}
+
 /// Chat roles supported by the runtime.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum Role {
@@ -32,6 +53,8 @@ pub struct Message {
     pub tool_call: Option<ToolCall>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_result: Option<ToolResult>,
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub attachments: Vec<Attachment>,
 }
 
 impl Message {
@@ -41,6 +64,7 @@ impl Message {
             content: content.into(),
             tool_call: None,
             tool_result: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -50,6 +74,7 @@ impl Message {
             content: content.into(),
             tool_call: None,
             tool_result: None,
+            attachments: Vec::new(),
         }
     }
 
@@ -64,7 +89,7 @@ impl Message {
                 name: name.clone(),
                 output,
             }),
+            attachments: Vec::new(),
         }
     }
 }
-

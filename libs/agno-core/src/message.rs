@@ -59,10 +59,7 @@ impl Message {
             role: Role::Tool,
             content: format!("Result from `{}`", name),
             tool_call: None,
-            tool_result: Some(ToolResult {
-                name,
-                output,
-            }),
+            tool_result: Some(ToolResult { name, output }),
         }
     }
 }

@@ -27,9 +27,8 @@ impl StubModel {
 impl LanguageModel for StubModel {
     async fn complete(&self, _prompt: &str) -> Result<String> {
         let mut locked = self.responses.lock().expect("stub model poisoned");
-        locked
-            .pop()
-            .ok_or_else(|| AgnoError::LanguageModel("StubModel ran out of scripted responses".into()))
+        locked.pop().ok_or_else(|| {
+            AgnoError::LanguageModel("StubModel ran out of scripted responses".into())
+        })
     }
 }
-

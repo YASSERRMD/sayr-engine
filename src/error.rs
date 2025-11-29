@@ -20,7 +20,9 @@ pub enum AgnoError {
     #[error("protocol error: {0}")]
     Protocol(String),
 
+    #[error("storage error: {0}")]
+    Storage(String),
+
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
 }
-

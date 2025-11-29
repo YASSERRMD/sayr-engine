@@ -156,8 +156,8 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
 
-    use crate::StubModel;
     use crate::tool::Tool;
+    use crate::StubModel;
 
     struct EchoTool;
 

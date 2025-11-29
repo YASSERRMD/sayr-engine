@@ -15,7 +15,7 @@ pub trait Tool: Send + Sync {
 
 #[derive(Default, Clone)]
 pub struct ToolRegistry {
-    tools: HashMap<String, Arc<dyn Tool>>, 
+    tools: HashMap<String, Arc<dyn Tool>>,
 }
 
 impl ToolRegistry {
@@ -26,8 +26,7 @@ impl ToolRegistry {
     }
 
     pub fn register<T: Tool + 'static>(&mut self, tool: T) {
-        self.tools
-            .insert(tool.name().to_string(), Arc::new(tool));
+        self.tools.insert(tool.name().to_string(), Arc::new(tool));
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -35,7 +34,10 @@ impl ToolRegistry {
     }
 
     pub async fn call(&self, name: &str, input: Value) -> Result<Value> {
-        let tool = self.tools.get(name).ok_or_else(|| AgnoError::ToolNotFound(name.to_string()))?;
+        let tool = self
+            .tools
+            .get(name)
+            .ok_or_else(|| AgnoError::ToolNotFound(name.to_string()))?;
         tool.call(input)
             .await
             .map_err(|source| AgnoError::ToolInvocation {
@@ -44,4 +46,3 @@ impl ToolRegistry {
             })
     }
 }
-

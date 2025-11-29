@@ -4,6 +4,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::{AgnoError, Result};
+use crate::hooks::{AgentHook, ConfirmationHandler};
+use crate::knowledge::Retriever;
 use crate::llm::LanguageModel;
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
@@ -24,6 +26,12 @@ pub struct Agent<M: LanguageModel> {
     tools: ToolRegistry,
     memory: ConversationMemory,
     max_steps: usize,
+    input_schema: Option<serde_json::Value>,
+    output_schema: Option<serde_json::Value>,
+    hooks: Vec<Arc<dyn AgentHook>>,
+    retriever: Option<Arc<dyn Retriever>>,
+    require_tool_confirmation: bool,
+    confirmation_handler: Option<Arc<dyn ConfirmationHandler>>,
 }
 
 impl<M: LanguageModel> Agent<M> {
@@ -34,6 +42,12 @@ impl<M: LanguageModel> Agent<M> {
             tools: ToolRegistry::new(),
             memory: ConversationMemory::default(),
             max_steps: 6,
+            input_schema: None,
+            output_schema: None,
+            hooks: Vec::new(),
+            retriever: None,
+            require_tool_confirmation: false,
+            confirmation_handler: None,
         }
     }
 
@@ -49,6 +63,32 @@ impl<M: LanguageModel> Agent<M> {
 
     pub fn with_memory(mut self, memory: ConversationMemory) -> Self {
         self.memory = memory;
+        self
+    }
+
+    pub fn with_input_schema(mut self, schema: serde_json::Value) -> Self {
+        self.input_schema = Some(schema);
+        self
+    }
+
+    pub fn with_output_schema(mut self, schema: serde_json::Value) -> Self {
+        self.output_schema = Some(schema);
+        self
+    }
+
+    pub fn with_hook(mut self, hook: Arc<dyn AgentHook>) -> Self {
+        self.hooks.push(hook);
+        self
+    }
+
+    pub fn with_retriever(mut self, retriever: Arc<dyn Retriever>) -> Self {
+        self.retriever = Some(retriever);
+        self
+    }
+
+    pub fn require_tool_confirmation(mut self, handler: Arc<dyn ConfirmationHandler>) -> Self {
+        self.require_tool_confirmation = true;
+        self.confirmation_handler = Some(handler);
         self
     }
 
@@ -70,8 +110,15 @@ impl<M: LanguageModel> Agent<M> {
         self.memory.push(Message::user(user_input));
 
         for _ in 0..self.max_steps {
-            let prompt = self.build_prompt();
+            let prompt = self.build_prompt().await?;
+            let snapshot: Vec<Message> = self.memory.iter().cloned().collect();
+            for hook in &self.hooks {
+                hook.before_model(snapshot.as_slice()).await?;
+            }
             let raw = self.model.complete(&prompt).await?;
+            for hook in &self.hooks {
+                hook.after_model(&raw).await?;
+            }
             let directive: AgentDirective = serde_json::from_str(&raw).map_err(|err| {
                 AgnoError::Protocol(format!(
                     "Expected JSON directive with `action`, got `{raw}`: {err}"
@@ -84,6 +131,22 @@ impl<M: LanguageModel> Agent<M> {
                     return Ok(content);
                 }
                 AgentDirective::CallTool { name, arguments } => {
+                    if self.require_tool_confirmation {
+                        if let Some(handler) = &self.confirmation_handler {
+                            let approved = handler
+                                .confirm_tool_call(&ToolCall {
+                                    name: name.clone(),
+                                    arguments: arguments.clone(),
+                                })
+                                .await?;
+                            if !approved {
+                                self.memory.push(Message::assistant(format!(
+                                    "Tool call `{name}` rejected by guardrail"
+                                )));
+                                continue;
+                            }
+                        }
+                    }
                     self.memory.push(Message {
                         role: Role::Assistant,
                         content: format!("Calling tool `{name}`"),
@@ -92,10 +155,29 @@ impl<M: LanguageModel> Agent<M> {
                             arguments: arguments.clone(),
                         }),
                         tool_result: None,
+                        attachments: Vec::new(),
                     });
 
+                    for hook in &self.hooks {
+                        hook.before_tool_call(
+                            self.memory
+                                .iter()
+                                .last()
+                                .unwrap()
+                                .tool_call
+                                .as_ref()
+                                .unwrap(),
+                        )
+                        .await?;
+                    }
                     let output = self.tools.call(&name, arguments).await?;
-                    self.memory.push(Message::tool(&name, output));
+                    let result_message = Message::tool(&name, output);
+                    for hook in &self.hooks {
+                        if let Some(result) = result_message.tool_result.as_ref() {
+                            hook.after_tool_result(result).await?;
+                        }
+                    }
+                    self.memory.push(result_message);
                 }
             }
         }
@@ -105,12 +187,26 @@ impl<M: LanguageModel> Agent<M> {
         ))
     }
 
-    fn build_prompt(&self) -> String {
+    async fn build_prompt(&self) -> Result<String> {
         let mut prompt = String::new();
         prompt.push_str(&format!("System: {}\n\n", self.system_prompt));
+        if let Some(schema) = &self.input_schema {
+            prompt.push_str(&format!(
+                "User input is expected to follow this JSON shape: {}\n\n",
+                schema
+            ));
+        }
         prompt.push_str("You must answer with JSON in one of the following formats:\n");
         prompt.push_str("- {\"action\":\"respond\",\"content\":\"<final assistant message>\"}\n");
-        prompt.push_str("- {\"action\":\"call_tool\",\"name\":\"<tool name>\",\"arguments\":{...}}\n\n");
+        prompt.push_str(
+            "- {\"action\":\"call_tool\",\"name\":\"<tool name>\",\"arguments\":{...}}\n\n",
+        );
+        if let Some(schema) = &self.output_schema {
+            prompt.push_str(&format!(
+                "When responding directly, conform to this output schema: {}\n\n",
+                schema
+            ));
+        }
         if self.tools.names().is_empty() {
             prompt.push_str("No tools are available.\n\n");
         } else {
@@ -121,18 +217,48 @@ impl<M: LanguageModel> Agent<M> {
             prompt.push('\n');
         }
 
+        if let Some(retriever) = &self.retriever {
+            let contexts = retriever
+                .retrieve(
+                    self.memory
+                        .iter()
+                        .rev()
+                        .find(|m| m.role == Role::User)
+                        .map(|m| m.content.as_str())
+                        .unwrap_or_default(),
+                    3,
+                )
+                .await
+                .unwrap_or_default();
+            if !contexts.is_empty() {
+                prompt.push_str("Context snippets:\n");
+                for ctx in contexts {
+                    prompt.push_str("- ");
+                    prompt.push_str(&ctx);
+                    prompt.push('\n');
+                }
+                prompt.push('\n');
+            }
+        }
+
         prompt.push_str("Conversation so far:\n");
         for message in self.memory.iter() {
             prompt.push_str(&format!("[{:?}] {}\n", message.role, message.content));
             if let Some(call) = &message.tool_call {
-                prompt.push_str(&format!("  -> calling {} with {}\n", call.name, call.arguments));
+                prompt.push_str(&format!(
+                    "  -> calling {} with {}\n",
+                    call.name, call.arguments
+                ));
             }
             if let Some(result) = &message.tool_result {
-                prompt.push_str(&format!("  <- {} returned {}\n", result.name, result.output));
+                prompt.push_str(&format!(
+                    "  <- {} returned {}\n",
+                    result.name, result.output
+                ));
             }
         }
 
-        prompt
+        Ok(prompt)
     }
 }
 
@@ -163,9 +289,7 @@ mod tests {
 
     #[tokio::test]
     async fn returns_llm_response_without_tools() {
-        let model = StubModel::new(vec![
-            r#"{"action":"respond","content":"Hello!"}"#.into(),
-        ]);
+        let model = StubModel::new(vec![r#"{"action":"respond","content":"Hello!"}"#.into()]);
         let mut agent = Agent::new(model);
 
         let reply = agent.respond("hi").await.unwrap();
@@ -191,4 +315,3 @@ mod tests {
         assert_eq!(agent.memory().len(), 4);
     }
 }
-
