@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AgentOS Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #f8f9fb; color: #222; }
+    h1 { margin-bottom: 8px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .card { background: white; border: 1px solid #ddd; border-radius: 8px; padding: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    code { background: #eef2f7; padding: 2px 6px; border-radius: 4px; }
+    #log { max-height: 240px; overflow: auto; font-family: monospace; background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h1>AgentOS Dashboard</h1>
+  <p>Monitor teams, workflows, and live events from your running AgentOS node.</p>
+  <div class="grid">
+    <div class="card">
+      <h3>Teams</h3>
+      <pre id="teams">loading...</pre>
+    </div>
+    <div class="card">
+      <h3>Workflows</h3>
+      <pre id="workflows">loading...</pre>
+    </div>
+    <div class="card">
+      <h3>Live Events</h3>
+      <div id="log"></div>
+    </div>
+  </div>
+  <script>
+    async function fetchJson(path) {
+      const res = await fetch(path);
+      return res.json();
+    }
+    async function refresh() {
+      document.getElementById('teams').textContent = JSON.stringify(await fetchJson('/teams'), null, 2);
+      document.getElementById('workflows').textContent = JSON.stringify(await fetchJson('/workflows'), null, 2);
+    }
+    refresh();
+    const events = new EventSource('/events');
+    events.onmessage = (event) => {
+      const log = document.getElementById('log');
+      const line = document.createElement('div');
+      line.textContent = new Date().toLocaleTimeString() + '  ' + event.data;
+      log.prepend(line);
+    };
+  </script>
+</body>
+</html>

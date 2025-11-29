@@ -105,6 +105,10 @@ impl<M: LanguageModel> Agent<M> {
         &self.memory
     }
 
+    pub fn memory_mut(&mut self) -> &mut ConversationMemory {
+        &mut self.memory
+    }
+
     /// Run a single exchange with the agent. Returns the final assistant reply.
     pub async fn respond(&mut self, user_input: impl Into<String>) -> Result<String> {
         self.memory.push(Message::user(user_input));
