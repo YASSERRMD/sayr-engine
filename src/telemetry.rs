@@ -145,18 +145,28 @@ mod tests {
     #[tokio::test]
     async fn retries_until_success() {
         let policy = RetryPolicy { max_retries: 2, backoff: Duration::from_millis(1) };
-        let mut calls = 0;
+        use std::sync::Arc;
+        use tokio::sync::Mutex;
+
+        let calls = Arc::new(Mutex::new(0u32));
         let telemetry = TelemetryCollector::default();
-        let res = policy.retry(|_| {
-            calls += 1;
-            async {
-                if calls < 2 {
-                    Err(AgnoError::Protocol("fail".into()))
-                } else {
-                    Ok(42)
-                }
-            }
-        }, Some(&telemetry)).await;
+        let res = policy
+            .retry(
+                |_: u32| {
+                    let calls = calls.clone();
+                    async move {
+                        let mut guard = calls.lock().await;
+                        *guard += 1;
+                        if *guard < 2 {
+                            Err(AgnoError::Protocol("fail".into()))
+                        } else {
+                            Ok(42)
+                        }
+                    }
+                },
+                Some(&telemetry),
+            )
+            .await;
         assert_eq!(res.unwrap(), 42);
         assert!(!telemetry.drain().1.is_empty());
     }
