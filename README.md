@@ -1,4 +1,4 @@
-# agno-rust 🦀
+# agno-rust
 
 A high-performance Rust implementation of the [agno](https://github.com/agno-agi/agno) AI agent framework. Build production-ready AI agents with multi-provider LLM support, extensive toolkits, and enterprise-grade features.
 
@@ -6,9 +6,9 @@ A high-performance Rust implementation of the [agno](https://github.com/agno-agi
 [![Tests](https://img.shields.io/badge/tests-53%20passing-brightgreen.svg)]()
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
-## ✨ Features
+## Features
 
-### 🤖 Multi-Provider LLM Support (10 Providers)
+### Multi-Provider LLM Support (10 Providers)
 
 | Provider | Default Model | Environment Variable |
 |----------|---------------|---------------------|
@@ -23,7 +23,7 @@ A high-performance Rust implementation of the [agno](https://github.com/agno-agi
 | **Together AI** | Llama-3.3-70B-Instruct | `TOGETHER_API_KEY` |
 | **Fireworks** | llama-v3p1-70b-instruct | `FIREWORKS_API_KEY` |
 
-### 🛠 Built-in Toolkits (13 Toolkits)
+### Built-in Toolkits (13 Toolkits)
 
 | Category | Toolkits | Description |
 |----------|----------|-------------|
@@ -32,34 +32,34 @@ A high-performance Rust implementation of the [agno](https://github.com/agno-agi
 | **Development** | GitHub, Shell, HTTP | Code repos, commands, API calls |
 | **Data** | SQL, JSON, Calculator | Database queries, data processing |
 
-### 🧠 Memory & Knowledge
+### Memory and Knowledge
 
 - **Vector Stores**: In-memory, PostgreSQL (pgvector), Qdrant
 - **Embedders**: OpenAI, Transformers, Whitespace (testing)
 - **Memory Strategies**: Full, Windowed, Summarized, Token-limited
 - **Document Chunking**: Sliding window chunker with overlap
 
-### 🔒 Enterprise Features
+### Enterprise Features
 
 - **Guardrails**: PII detection (SSN, credit card, email, phone), prompt injection detection
-- **RBAC & Privacy**: Access control, principals, privacy rules
+- **RBAC and Privacy**: Access control, principals, privacy rules
 - **Reasoning**: Chain-of-thought orchestration with confidence scoring
 - **MCP Support**: Model Context Protocol client with stdio/HTTP transports
 
-### 📊 Observability
+### Observability
 
 - **Telemetry**: OpenTelemetry tracing with OTLP export
 - **Metrics**: Prometheus exporter for run duration, tool calls, failures
 - **Structured Events**: In-memory collector with batch delivery
 
-### 🚀 Runtime & Deployment
+### Runtime and Deployment
 
 - **HTTP Server**: REST API with SSE streaming
 - **Workflows**: Sequential, parallel, and conditional execution
 - **Teams**: Multi-agent coordination
 - **Config**: File-based or environment variable configuration
 
-## 📦 Installation
+## Installation
 
 Add to your `Cargo.toml`:
 
@@ -68,7 +68,7 @@ Add to your `Cargo.toml`:
 agno-rust = "0.2"
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ```rust
 use agno_rust::{Agent, OpenAIClient, ToolRegistry};
@@ -95,7 +95,7 @@ async fn main() -> agno_rust::Result<()> {
 }
 ```
 
-## 🔧 Toolkit Examples
+## Toolkit Examples
 
 ### GitHub Integration
 
@@ -142,7 +142,7 @@ register_pubmed_tools(&mut tools);  // Search PubMed
 // Tools: arxiv_search, pubmed_search
 ```
 
-## 🧠 Memory Strategies
+## Memory Strategies
 
 ```rust
 use agno_rust::{WindowedMemoryStrategy, SummarizedMemoryStrategy};
@@ -154,7 +154,7 @@ let strategy = WindowedMemoryStrategy::new(10);
 let strategy = SummarizedMemoryStrategy::new(5, 5);
 ```
 
-## 🔒 Guardrails
+## Guardrails
 
 ```rust
 use agno_rust::guardrails::{PiiGuardrail, PromptInjectionGuardrail, GuardrailChain};
@@ -170,7 +170,7 @@ match chain.validate("My SSN is 123-45-6789") {
 }
 ```
 
-## 🔌 MCP Integration
+## MCP Integration
 
 ```rust
 use agno_rust::mcp::{McpClient, StdioTransport, McpTools};
@@ -185,7 +185,7 @@ let mcp_tools = McpTools::new(client);
 mcp_tools.register_all(&mut tools).await?;
 ```
 
-## 📊 Observability
+## Observability
 
 ```rust
 use agno_rust::{init_tracing, init_prometheus_registry};
@@ -197,7 +197,7 @@ init_tracing("my-agent", Some("http://otel-collector:4317"));
 init_prometheus_registry();
 ```
 
-## 🏗 Architecture
+## Architecture
 
 ```
 agno-rust/
@@ -205,17 +205,17 @@ agno-rust/
 │   ├── agent.rs        # Core agent loop
 │   ├── llm.rs          # 10 LLM provider clients
 │   ├── tools/          # 13 built-in toolkits
-│   ├── guardrails.rs   # PII & injection detection
+│   ├── guardrails.rs   # PII and injection detection
 │   ├── memory.rs       # Memory strategies
 │   ├── mcp.rs          # MCP client
-│   ├── knowledge/      # RAG & vector stores
+│   ├── knowledge/      # RAG and vector stores
 │   ├── reasoning.rs    # Chain-of-thought
 │   └── server.rs       # HTTP runtime
 ├── cookbook/           # Example agents
 └── scripts/            # Development utilities
 ```
 
-## 🧪 Testing
+## Testing
 
 ```bash
 # Run all tests
@@ -228,10 +228,10 @@ cargo tarpaulin
 ./scripts/check.sh
 ```
 
-## 📄 License
+## License
 
 MIT License - see [LICENSE](LICENSE) for details.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Inspired by [agno-agi/agno](https://github.com/agno-agi/agno) - the Python agent framework.
