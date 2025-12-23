@@ -31,4 +31,8 @@ pub enum AgnoError {
 
     #[error("telemetry error: {0}")]
     Telemetry(String),
+
+    #[error("MCP error: {0}")]
+    Mcp(String),
 }
+

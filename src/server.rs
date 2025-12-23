@@ -207,6 +207,7 @@ impl<M: LanguageModel + 'static> AgentRuntime<M> {
     pub async fn serve(self, addr: SocketAddr) -> Result<()> {
         let app = Router::new()
             .route("/health", get(|| async { "ok" }))
+            .route("/metrics", get(prometheus_metrics))
             .route("/dashboard", get(dashboard))
             .route("/agents", get(list_agents::<M>))
             .route("/agents/:id/chat", post(chat_with_agent::<M>))
@@ -538,6 +539,26 @@ async fn chat_with_agent<M: LanguageModel + 'static>(
                 .into_response()
         }
     }
+}
+
+async fn prometheus_metrics() -> impl IntoResponse {
+    use prometheus::Encoder;
+    let registry = crate::metrics::init_prometheus_registry();
+    let metric_families = registry.gather();
+    let encoder = prometheus::TextEncoder::new();
+    let mut buffer = Vec::new();
+    if encoder.encode(&metric_families, &mut buffer).is_err() {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to encode metrics",
+        )
+            .into_response();
+    }
+    (
+        [(axum::http::header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        buffer,
+    )
+        .into_response()
 }
 
 async fn dashboard() -> Html<&'static str> {

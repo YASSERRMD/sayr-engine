@@ -47,6 +47,11 @@ impl ToolRegistry {
         self.tools.keys().cloned().collect()
     }
 
+    /// Get a tool by name
+    pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        self.tools.get(name).cloned()
+    }
+
     pub fn describe(&self) -> Vec<ToolDescription> {
         let mut descriptions: Vec<ToolDescription> = self
             .tools
