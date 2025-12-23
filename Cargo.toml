@@ -54,7 +54,11 @@ opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "metrics", "trac
 opentelemetry-otlp = { version = "0.15", features = ["grpc-tonic", "trace", "metrics"] }
 opentelemetry-prometheus = "0.15"
 prometheus = { version = "0.13", default-features = false, features = ["process"] }
-sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "macros", "sqlite", "chrono"] }
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "macros", "sqlite", "chrono", "postgres", "uuid"] }
 urlencoding = "2.1"
 regex = "1.10"
 base64 = "0.22.1"
+aws-config = "1.8.12"
+aws-sdk-bedrockruntime = "1.120.0"
+duckdb = { version = "1.1.1", features = ["bundled"] }
+uuid = { version = "1.19.0", features = ["v4", "serde"] }

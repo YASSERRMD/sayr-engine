@@ -1644,7 +1644,150 @@ impl LanguageModel for FireworksClient {
     }
 }
 
-/// A deterministic model used for tests and demos.
+// ─────────────────────────────────────────────────────────────────────────────
+// AWS Bedrock Client
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// AWS Bedrock client.
+/// Currently optimized for Anthropic Claude 3 models on Bedrock.
+#[derive(Clone)]
+pub struct AwsBedrockClient {
+    client: std::sync::Arc<aws_sdk_bedrockruntime::Client>,
+    model_id: String,
+}
+
+impl AwsBedrockClient {
+    pub async fn new(region: Option<String>) -> Self {
+        let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
+        if let Some(r) = region {
+             loader = loader.region(aws_config::Region::new(r));
+        }
+        let sdk_config = loader.load().await;
+        let client = aws_sdk_bedrockruntime::Client::new(&sdk_config);
+        
+        Self {
+            client: std::sync::Arc::new(client),
+            model_id: "anthropic.claude-3-sonnet-20240229-v1:0".to_string(),
+        }
+    }
+
+    pub fn with_model(mut self, model_id: impl Into<String>) -> Self {
+        self.model_id = model_id.into();
+        self
+    }
+}
+
+#[async_trait]
+impl LanguageModel for AwsBedrockClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        _stream: bool, // Streaming not implemented for this pass
+    ) -> Result<ModelCompletion> {
+        // Construct Anthropic Messages API payload for Bedrock
+        let system_prompt = messages
+            .iter()
+            .filter(|m| m.role == Role::System)
+            .map(|m| m.content.clone())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let mut bedrock_messages = Vec::new();
+        for m in messages {
+            if m.role == Role::System { continue; }
+            
+            let role = match m.role {
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "user", // Tool results return as user content in Anthropic API
+                _ => "user",
+            };
+
+            let content = if m.role == Role::Tool {
+                // Handle tool results
+                json!([{
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call.as_ref().and_then(|t| t.id.clone()).unwrap_or_default(),
+                    "content": m.content
+                }])
+            } else if let Some(ref tc) = m.tool_call {
+                 // Handle assistant tool use
+                 json!([{
+                    "type": "tool_use",
+                    "id": tc.id.clone().unwrap_or_default(),
+                    "name": tc.name,
+                    "input": tc.arguments
+                }])
+            } else {
+                json!(m.content)
+            };
+
+            bedrock_messages.push(json!({
+                "role": role,
+                "content": content
+            }));
+        }
+
+        let mut body = json!({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4096,
+            "messages": bedrock_messages
+        });
+
+        if !system_prompt.is_empty() {
+             body["system"] = json!(system_prompt);
+        }
+
+        if !tools.is_empty() {
+            let tool_defs: Vec<Value> = tools.iter().map(|t| {
+                json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.parameters.clone().unwrap_or(json!({"type": "object", "properties": {}}))
+                })
+            }).collect();
+            body["tools"] = json!(tool_defs);
+        }
+
+        let blob = aws_sdk_bedrockruntime::primitives::Blob::new(serde_json::to_vec(&body).unwrap());
+
+        let output = self.client
+            .invoke_model()
+            .model_id(&self.model_id)
+            .body(blob)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Bedrock invocation failed: {}", e)))?;
+
+        let response_body: Value = serde_json::from_slice(output.body.as_ref())
+            .map_err(|e| AgnoError::LanguageModel(format!("Failed to parse Bedrock response: {}", e)))?;
+
+        let mut content = None;
+        let mut tool_calls = Vec::new();
+
+        if let Some(content_blocks) = response_body["content"].as_array() {
+            let mut text_parts = Vec::new();
+            for block in content_blocks {
+                if block["type"] == "text" {
+                    if let Some(text) = block["text"].as_str() {
+                        text_parts.push(text);
+                    }
+                } else if block["type"] == "tool_use" {
+                    let id = block["id"].as_str().map(String::from);
+                    let name = block["name"].as_str().unwrap_or_default().to_string();
+                    let args = block["input"].clone();
+                    tool_calls.push(ToolCall { id, name, arguments: args });
+                }
+            }
+            if !text_parts.is_empty() {
+                content = Some(text_parts.join("\n"));
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
 
 
 pub struct StubModel {

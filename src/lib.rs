@@ -46,8 +46,8 @@ pub use knowledge::{
     VectorStore, WhitespaceEmbedder,
 };
 pub use llm::{
-    AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel, MistralClient,
-    ModelCompletion, OllamaClient, StubModel, TogetherClient,
+    AwsBedrockClient, AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel,
+    MistralClient, ModelCompletion, OllamaClient, StubModel, TogetherClient,
 };
 pub use memory::{
     ConversationMemory, FullMemoryStrategy, MemoryStrategy, PersistentConversationMemory,

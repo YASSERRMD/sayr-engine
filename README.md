@@ -20,6 +20,7 @@ A high-performance Rust implementation of the [agno](https://github.com/agno-agi
 | **Ollama** | llama3.1 | `OLLAMA_HOST` (optional) |
 | **Mistral** | mistral-large-latest | `MISTRAL_API_KEY` |
 | **Azure OpenAI** | gpt-4 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` |
+| **AWS Bedrock** | claude-3-sonnet | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` |
 | **Together AI** | Llama-3.3-70B-Instruct | `TOGETHER_API_KEY` |
 | **Fireworks** | llama-v3p1-70b-instruct | `FIREWORKS_API_KEY` |
 
@@ -30,7 +31,7 @@ A high-performance Rust implementation of the [agno](https://github.com/agno-agi
 | **Search** | DuckDuckGo, Wikipedia, Arxiv, PubMed | Web, knowledge, and academic search |
 | **Communication** | Slack, Gmail, Discord | Messaging and email integration |
 | **Development** | GitHub, Shell, HTTP | Code repos, commands, API calls |
-| **Data** | SQL, JSON, Calculator | Database queries, data processing |
+| **Data** | SQL (SQLite), Postgres, DuckDB, JSON, Calculator | Database queries, data processing |
 
 ### Memory and Knowledge
 
