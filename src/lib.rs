@@ -40,7 +40,7 @@ pub use knowledge::{
     SearchParams, SimilarityMetric, SlidingWindowChunker, TransformerClient, TransformerEmbedder,
     VectorStore, WhitespaceEmbedder,
 };
-pub use llm::{LanguageModel, ModelCompletion, StubModel};
+pub use llm::{CohereClient, LanguageModel, ModelCompletion, StubModel};
 pub use memory::{ConversationMemory, PersistentConversationMemory};
 pub use message::{Attachment, AttachmentKind, Message, Role, ToolCall, ToolResult};
 pub use metrics::{EvaluationReport, MetricsTracker};

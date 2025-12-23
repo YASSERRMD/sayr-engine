@@ -573,10 +573,199 @@ impl LanguageModel for GeminiClient {
     }
 }
 
+#[derive(Clone)]
+pub struct CohereClient {
+    http: reqwest::Client,
+    model: String,
+    api_key: String,
+    endpoint: String,
+}
+
+impl CohereClient {
+    pub fn from_config(cfg: &ModelConfig) -> Result<Self> {
+        let api_key = cfg
+            .cohere
+            .api_key
+            .clone()
+            .or_else(|| cfg.api_key.clone())
+            .ok_or_else(|| {
+                AgnoError::LanguageModel("missing Cohere API key in model config".into())
+            })?;
+        let endpoint = cfg
+            .cohere
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| "https://api.cohere.ai/v2/chat".to_string());
+        Ok(Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(60))
+                .build()
+                .map_err(|err| AgnoError::LanguageModel(format!("http client error: {err}")))?,
+            model: cfg.model.clone(),
+            api_key,
+            endpoint,
+        })
+    }
+
+    fn to_messages(&self, messages: &[Message]) -> Vec<CohereMessage> {
+        messages
+            .iter()
+            .map(|message| {
+                let role = match message.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+                CohereMessage {
+                    role: role.to_string(),
+                    content: message.content.clone(),
+                }
+            })
+            .collect()
+    }
+
+    fn to_tools(&self, tools: &[ToolDescription]) -> Option<Vec<CohereTool>> {
+        if tools.is_empty() {
+            return None;
+        }
+        Some(
+            tools
+                .iter()
+                .map(|tool| CohereTool {
+                    r#type: "function".to_string(),
+                    function: CohereFunction {
+                        name: tool.name.clone(),
+                        description: Some(tool.description.clone()),
+                        parameters: tool.parameters.clone(),
+                    },
+                })
+                .collect(),
+        )
+    }
+}
+
+#[async_trait]
+impl LanguageModel for CohereClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        let payload = json!({
+            "model": self.model,
+            "messages": self.to_messages(messages),
+            "tools": self.to_tools(tools),
+            "stream": stream,
+        });
+
+        let resp = self
+            .http
+            .post(&self.endpoint)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|err| AgnoError::LanguageModel(format!("Cohere request error: {err}")))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "cohere"));
+        }
+
+        if stream {
+            let mut content = String::new();
+            let tool_calls_map: HashMap<String, OpenAiToolCallState> = HashMap::new();
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|err| {
+                    AgnoError::LanguageModel(format!("Cohere stream error: {err}"))
+                })?;
+                let text = String::from_utf8_lossy(&chunk);
+                for line in text.lines() {
+                    if !line.starts_with("data: ") {
+                        continue;
+                    }
+                    let data = line.trim_start_matches("data: ").trim();
+                    if data == "[DONE]" || data.is_empty() {
+                        continue;
+                    }
+                    if let Ok(parsed) = serde_json::from_str::<CohereStreamChunk>(data) {
+                        if let Some(delta) = parsed.delta {
+                            if let Some(msg) = delta.message {
+                                if let Some(c) = msg.content {
+                                    if let Some(text_content) = c.get("text") {
+                                        if let Some(t) = text_content.as_str() {
+                                            content.push_str(t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let calls: Vec<ToolCall> = tool_calls_map
+                .into_values()
+                .filter_map(|state| {
+                    let name = state.name?;
+                    let args = serde_json::from_str(&state.arguments)
+                        .unwrap_or_else(|_| Value::String(state.arguments.clone()));
+                    Some(ToolCall {
+                        id: state.id,
+                        name,
+                        arguments: args,
+                    })
+                })
+                .collect();
+
+            return Ok(ModelCompletion {
+                content: if content.is_empty() {
+                    None
+                } else {
+                    Some(content)
+                },
+                tool_calls: calls,
+            });
+        }
+
+        let body: CohereResponse = resp.json().await.map_err(|err| {
+            AgnoError::LanguageModel(format!("Cohere response parse error: {err}"))
+        })?;
+
+        let content = body.message.and_then(|m| {
+            m.content.and_then(|c| c.get("text").and_then(|v| v.as_str().map(|s| s.to_string())))
+        });
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = body.tool_calls {
+            for call in calls {
+                let args = serde_json::from_str(&call.function.arguments)
+                    .unwrap_or_else(|_| Value::String(call.function.arguments.clone()));
+                tool_calls.push(ToolCall {
+                    id: call.id,
+                    name: call.function.name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion {
+            content,
+            tool_calls,
+        })
+    }
+}
+
 /// A deterministic model used for tests and demos.
 pub struct StubModel {
     responses: Mutex<VecDeque<String>>,
 }
+
 
 impl StubModel {
     pub fn new(responses: Vec<String>) -> Arc<Self> {
@@ -792,3 +981,65 @@ struct GeminiCandidate {
 struct GeminiCandidateContent {
     parts: Vec<GeminiPart>,
 }
+
+// Cohere data structures
+#[derive(Debug, Serialize, Deserialize)]
+struct CohereMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CohereTool {
+    r#type: String,
+    function: CohereFunction,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CohereFunction {
+    name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    parameters: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereResponse {
+    #[serde(default)]
+    message: Option<CohereResponseMessage>,
+    #[serde(default)]
+    tool_calls: Option<Vec<CohereToolCall>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereResponseMessage {
+    #[serde(default)]
+    content: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereToolCall {
+    #[serde(default)]
+    id: Option<String>,
+    function: CohereFunctionCall,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereFunctionCall {
+    name: String,
+    arguments: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereStreamChunk {
+    #[serde(default)]
+    delta: Option<CohereDelta>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CohereDelta {
+    #[serde(default)]
+    message: Option<CohereResponseMessage>,
+}
+

@@ -119,6 +119,8 @@ pub struct ModelConfig {
     pub anthropic: ProviderConfig,
     #[serde(default)]
     pub gemini: ProviderConfig,
+    #[serde(default)]
+    pub cohere: ProviderConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -216,6 +218,7 @@ impl Default for AppConfig {
                 openai: ProviderConfig::default(),
                 anthropic: ProviderConfig::default(),
                 gemini: ProviderConfig::default(),
+                cohere: ProviderConfig::default(),
             },
             storage: StorageConfig::default(),
         }
@@ -263,6 +266,12 @@ impl AppConfig {
         }
         if let Ok(gemini_endpoint) = env::var("AGNO_GEMINI_ENDPOINT") {
             cfg.model.gemini.endpoint = Some(gemini_endpoint);
+        }
+        if let Ok(cohere_key) = env::var("AGNO_COHERE_API_KEY") {
+            cfg.model.cohere.api_key = Some(cohere_key);
+        }
+        if let Ok(cohere_endpoint) = env::var("AGNO_COHERE_ENDPOINT") {
+            cfg.model.cohere.endpoint = Some(cohere_endpoint);
         }
         if let Ok(stream) = env::var("AGNO_STREAMING") {
             if let Ok(parsed) = stream.parse::<bool>() {
