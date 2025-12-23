@@ -46,3 +46,4 @@ sysinfo = { version = "0.30", default-features = false, features = ["multithread
 toml = "0.8"
 tempfile = "3"
 reqwest = { workspace = true }
+sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio", "macros", "sqlite", "chrono"] }

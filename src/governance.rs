@@ -39,13 +39,13 @@ pub struct AccessController {
 
 impl AccessController {
     pub fn new() -> Self {
-        let mut controller = Self::default();
+        let controller = Self::default();
         controller.allow(Role::Admin, Action::ManageDeployment);
         controller.allow(Role::Admin, Action::ReadTranscript);
         controller
     }
 
-    pub fn allow(&mut self, role: Role, action: Action) {
+    pub fn allow(&self, role: Role, action: Action) {
         let mut rules = self.rules.write().unwrap();
         rules.entry(role).or_default().insert(action);
     }
