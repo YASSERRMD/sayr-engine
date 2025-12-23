@@ -383,6 +383,7 @@ async fn stream_tool_traces<M: LanguageModel + 'static>(
     state.telemetry.record(
         "sse_subscribe",
         json!({"agent": agent_id.clone(), "tenant": principal.tenant, "principal": principal.id}),
+        crate::TelemetryLabels::default().with_tenant(principal.tenant.clone().unwrap_or_default()),
     );
 
     let rx = state.trace_events.subscribe();
@@ -474,6 +475,7 @@ async fn chat_with_agent<M: LanguageModel + 'static>(
     state.telemetry.record(
         "http_request",
         json!({"path": format!("/agents/{}/chat", agent_id), "tenant": principal.tenant, "principal": principal.id}),
+        crate::TelemetryLabels::default().with_tenant(principal.tenant.clone().unwrap_or_default()),
     );
 
     let mut guard = agent.lock().await;
@@ -512,6 +514,7 @@ async fn chat_with_agent<M: LanguageModel + 'static>(
             state.telemetry.record(
                 "http_response",
                 json!({"path": format!("/agents/{}/chat", agent_id), "status": 200, "tenant": principal.tenant}),
+                crate::TelemetryLabels::default().with_tenant(principal.tenant.clone().unwrap_or_default()),
             );
             Json(AgentChatResponse { reply, transcript }).into_response()
         }
@@ -526,6 +529,7 @@ async fn chat_with_agent<M: LanguageModel + 'static>(
             state.telemetry.record(
                 "http_response",
                 json!({"path": format!("/agents/{}/chat", agent_id), "status": 502, "error": err.to_string()}),
+                crate::TelemetryLabels::default().with_tenant(principal.tenant.clone().unwrap_or_default()),
             );
             (
                 StatusCode::BAD_GATEWAY,

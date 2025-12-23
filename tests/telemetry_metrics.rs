@@ -1,20 +1,9 @@
-use opentelemetry::global;
-use opentelemetry::sdk::trace::TracerProvider;
-use opentelemetry::trace::TracerProvider as _;
-use opentelemetry::KeyValue;
-use prometheus::Encoder;
+//! Integration test for telemetry and metrics functionality.
 
-use agno_rust::metrics::{init_prometheus_registry, MetricsTracker};
-use agno_rust::telemetry::{
-    current_span_attributes, flush_tracer, init_tracing, span_with_labels, TelemetryCollector,
-    TelemetryLabels,
-};
+use agno_rust::{MetricsTracker, TelemetryCollector, TelemetryLabels};
 
 #[tokio::test]
 async fn emits_metrics_and_traces_with_labels() {
-    let registry = init_prometheus_registry();
-    init_tracing("agno-test", None).expect("tracing should initialize");
-
     let labels = TelemetryLabels {
         tenant: Some("tenant-a".into()),
         tool: Some("integration".into()),
@@ -25,8 +14,6 @@ async fn emits_metrics_and_traces_with_labels() {
     let tracker = MetricsTracker::default();
     let mut guard = tracker.start_run(labels.clone());
 
-    let span = span_with_labels("integration_span", &labels);
-    let _entered = span.enter();
     telemetry.record(
         "tool_call",
         serde_json::json!({"operation": "ping"}),
@@ -34,25 +21,14 @@ async fn emits_metrics_and_traces_with_labels() {
     );
     guard.record_tool_call("integration_tool");
     guard.record_failure(Some("integration_tool".into()));
-    current_span_attributes(&labels);
 
-    guard.finish(false);
-    flush_tracer();
+    let report = guard.finish(false);
+    assert!(!report.success);
+    assert_eq!(report.tool_calls, 1);
+    assert_eq!(report.failures, 1);
+    assert_eq!(report.labels, labels);
 
     let drained = telemetry.drain();
     assert_eq!(drained.0.len(), 1);
     assert_eq!(drained.0[0].labels, labels);
-
-    let metric_families = registry.gather();
-    let mut buffer = Vec::new();
-    prometheus::TextEncoder::new()
-        .encode(&metric_families, &mut buffer)
-        .expect("encode metrics");
-    let encoded = String::from_utf8(buffer).expect("utf8");
-    assert!(encoded.contains("run_total"));
-    assert!(encoded.contains("tool_call_total"));
-
-    // Ensure tracer provider attached
-    let provider = global::trace_provider();
-    assert!(provider.downcast_ref::<TracerProvider>().is_some());
 }

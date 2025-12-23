@@ -1,3 +1,6 @@
+//! Metrics tracking and evaluation.
+#![allow(dead_code)]
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -136,7 +139,9 @@ impl RunGuard {
 }
 
 pub fn init_prometheus_registry() -> PromRegistry {
-    exporter().with_registry(PromRegistry::new()).init()
+    let registry = PromRegistry::new();
+    let _ = exporter().with_registry(registry.clone()).build();
+    registry
 }
 
 #[cfg(test)]
