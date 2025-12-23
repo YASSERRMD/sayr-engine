@@ -9,7 +9,7 @@ use crate::hooks::{AgentHook, ConfirmationHandler};
 use crate::knowledge::Retriever;
 use crate::llm::{LanguageModel, ModelCompletion};
 use crate::memory::ConversationMemory;
-use crate::message::{Message, Role, ToolCall};
+use crate::message::{Message, Role};
 use crate::metrics::{MetricsTracker, RunGuard};
 use crate::telemetry::{TelemetryCollector, TelemetryLabels};
 use crate::tool::ToolRegistry;

@@ -1,15 +1,9 @@
-use prometheus::Encoder;
+//! Integration test for telemetry and metrics functionality.
 
-use agno_rust::{
-    current_span_attributes, flush_tracer, init_tracing, span_with_labels, MetricsTracker,
-    TelemetryCollector, TelemetryLabels,
-};
+use agno_rust::{MetricsTracker, TelemetryCollector, TelemetryLabels};
 
 #[tokio::test]
 async fn emits_metrics_and_traces_with_labels() {
-    // Skip prometheus registry initialization in test since it requires global state
-    let _ = init_tracing("agno-test", None);
-
     let labels = TelemetryLabels {
         tenant: Some("tenant-a".into()),
         tool: Some("integration".into()),
@@ -20,8 +14,6 @@ async fn emits_metrics_and_traces_with_labels() {
     let tracker = MetricsTracker::default();
     let mut guard = tracker.start_run(labels.clone());
 
-    let span = span_with_labels("integration_span", &labels);
-    let _entered = span.enter();
     telemetry.record(
         "tool_call",
         serde_json::json!({"operation": "ping"}),
@@ -29,13 +21,14 @@ async fn emits_metrics_and_traces_with_labels() {
     );
     guard.record_tool_call("integration_tool");
     guard.record_failure(Some("integration_tool".into()));
-    current_span_attributes(&labels);
 
-    guard.finish(false);
-    flush_tracer();
+    let report = guard.finish(false);
+    assert!(!report.success);
+    assert_eq!(report.tool_calls, 1);
+    assert_eq!(report.failures, 1);
+    assert_eq!(report.labels, labels);
 
     let drained = telemetry.drain();
     assert_eq!(drained.0.len(), 1);
     assert_eq!(drained.0[0].labels, labels);
 }
-

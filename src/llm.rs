@@ -1,3 +1,6 @@
+//! Language model implementations and abstractions.
+#![allow(dead_code)]
+
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;

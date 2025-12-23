@@ -1,3 +1,6 @@
+//! Metrics tracking and evaluation.
+#![allow(dead_code)]
+
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
