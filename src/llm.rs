@@ -761,7 +761,450 @@ impl LanguageModel for CohereClient {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Groq Client (OpenAI-compatible API)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Groq client - uses OpenAI-compatible API with Groq's endpoint.
+/// Default model: llama-3.3-70b-versatile
+#[derive(Clone)]
+pub struct GroqClient {
+    http: reqwest::Client,
+    model: String,
+    api_key: String,
+    base_url: String,
+}
+
+impl GroqClient {
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("failed to build http client"),
+            model: "llama-3.3-70b-versatile".to_string(),
+            api_key: api_key.into(),
+            base_url: "https://api.groq.com/openai/v1".to_string(),
+        }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("GROQ_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("GROQ_API_KEY not set".into()))?;
+        Ok(Self::new(api_key))
+    }
+}
+
+#[async_trait]
+impl LanguageModel for GroqClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        // Convert messages to OpenAI format
+        let oai_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+                let mut msg = json!({
+                    "role": role,
+                    "content": m.content.clone()
+                });
+                if let Some(ref result) = m.tool_result {
+                    if let Some(ref call_id) = result.tool_call_id {
+                        msg["tool_call_id"] = json!(call_id);
+                    }
+                }
+                msg
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": oai_messages,
+            "stream": stream
+        });
+
+        if !tools.is_empty() {
+            let oai_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(oai_tools);
+        }
+
+        let resp = self
+            .http
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Groq request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Groq"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Groq parse error: {e}")))?;
+
+        let choice = &json["choices"][0]["message"];
+        let content = choice["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = choice["tool_calls"].as_array() {
+            for call in calls {
+                let name = call["function"]["name"].as_str().unwrap_or("").to_string();
+                let args_str = call["function"]["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                tool_calls.push(ToolCall {
+                    id: call["id"].as_str().map(String::from),
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ollama Client (Local LLM)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Ollama client for local LLM inference.
+/// Default model: llama3.1
+#[derive(Clone)]
+pub struct OllamaClient {
+    http: reqwest::Client,
+    model: String,
+    base_url: String,
+}
+
+impl OllamaClient {
+    pub fn new() -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(300)) // Local models can be slow
+                .build()
+                .expect("failed to build http client"),
+            model: "llama3.1".to_string(),
+            base_url: "http://localhost:11434".to_string(),
+        }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn with_host(mut self, host: impl Into<String>) -> Self {
+        self.base_url = host.into();
+        self
+    }
+
+    pub fn from_env() -> Self {
+        let mut client = Self::new();
+        if let Ok(host) = std::env::var("OLLAMA_HOST") {
+            client.base_url = host;
+        }
+        if let Ok(model) = std::env::var("OLLAMA_MODEL") {
+            client.model = model;
+        }
+        client
+    }
+}
+
+impl Default for OllamaClient {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl LanguageModel for OllamaClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        _stream: bool,
+    ) -> Result<ModelCompletion> {
+        // Convert messages to Ollama format
+        let ollama_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+                json!({
+                    "role": role,
+                    "content": m.content.clone()
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": ollama_messages,
+            "stream": false
+        });
+
+        if !tools.is_empty() {
+            let ollama_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(ollama_tools);
+        }
+
+        let resp = self
+            .http
+            .post(format!("{}/api/chat", self.base_url))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Ollama request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Ollama"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Ollama parse error: {e}")))?;
+
+        let message = &json["message"];
+        let content = message["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message["tool_calls"].as_array() {
+            for call in calls {
+                let func = &call["function"];
+                let name = func["name"].as_str().unwrap_or("").to_string();
+                let args = func["arguments"].clone();
+                tool_calls.push(ToolCall {
+                    id: None,
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mistral AI Client
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Mistral AI client using their OpenAI-compatible API.
+/// Default model: mistral-large-latest
+#[derive(Clone)]
+pub struct MistralClient {
+    http: reqwest::Client,
+    model: String,
+    api_key: String,
+    base_url: String,
+}
+
+impl MistralClient {
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("failed to build http client"),
+            model: "mistral-large-latest".to_string(),
+            api_key: api_key.into(),
+            base_url: "https://api.mistral.ai/v1".to_string(),
+        }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("MISTRAL_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("MISTRAL_API_KEY not set".into()))?;
+        Ok(Self::new(api_key))
+    }
+}
+
+#[async_trait]
+impl LanguageModel for MistralClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        // Convert messages to Mistral format (OpenAI-compatible)
+        let mistral_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+
+                let mut msg = json!({
+                    "role": role,
+                    "content": m.content.clone()
+                });
+
+                // Add tool_call_id for tool responses
+                if m.role == Role::Tool {
+                    if let Some(ref tc) = m.tool_call {
+                        if let Some(ref id) = tc.id {
+                            msg["tool_call_id"] = json!(id);
+                        }
+                    }
+                }
+
+                // Add tool_calls for assistant messages
+                if let Some(ref tc) = m.tool_call {
+                    if m.role == Role::Assistant {
+                        msg["tool_calls"] = json!([{
+                            "id": tc.id.clone().unwrap_or_default(),
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": serialize_tool_arguments(&tc.arguments)
+                            }
+                        }]);
+                        msg["content"] = json!(null);
+                    }
+                }
+
+                msg
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": mistral_messages,
+            "stream": stream
+        });
+
+        if !tools.is_empty() {
+            let mistral_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters.clone().unwrap_or(json!({"type": "object", "properties": {}}))
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(mistral_tools);
+            body["tool_choice"] = json!("auto");
+        }
+
+        let resp = self
+            .http
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Mistral request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Mistral"));
+        }
+
+        // Parse response (OpenAI-compatible format)
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Mistral parse error: {e}")))?;
+
+        let choice = json["choices"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| AgnoError::LanguageModel("Mistral returned no choices".into()))?;
+
+        let message = &choice["message"];
+        let content = message["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message["tool_calls"].as_array() {
+            for call in calls {
+                let id = call["id"].as_str().map(String::from);
+                let func = &call["function"];
+                let name = func["name"].as_str().unwrap_or("").to_string();
+                let args_str = func["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                tool_calls.push(ToolCall {
+                    id,
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
 /// A deterministic model used for tests and demos.
+
 pub struct StubModel {
     responses: Mutex<VecDeque<String>>,
 }
