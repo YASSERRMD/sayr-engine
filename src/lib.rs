@@ -14,6 +14,7 @@ pub mod guardrails;
 mod hooks;
 mod knowledge;
 mod llm;
+pub mod mcp;
 mod memory;
 mod message;
 mod metrics;
@@ -26,6 +27,7 @@ mod tool;
 mod toolkit;
 pub mod tools;
 mod workflow;
+
 
 pub use agent::{Agent, AgentDirective};
 pub use config::{
@@ -43,8 +45,12 @@ pub use knowledge::{
     SearchParams, SimilarityMetric, SlidingWindowChunker, TransformerClient, TransformerEmbedder,
     VectorStore, WhitespaceEmbedder,
 };
-pub use llm::{CohereClient, LanguageModel, ModelCompletion, StubModel};
-pub use memory::{ConversationMemory, PersistentConversationMemory};
+pub use llm::{CohereClient, GroqClient, LanguageModel, MistralClient, ModelCompletion, OllamaClient, StubModel};
+pub use memory::{
+    ConversationMemory, FullMemoryStrategy, MemoryStrategy, PersistentConversationMemory,
+    SummarizedMemoryStrategy, TokenLimitedMemoryStrategy, WindowedMemoryStrategy,
+};
+
 pub use message::{Attachment, AttachmentKind, Message, Role, ToolCall, ToolResult};
 pub use metrics::{EvaluationReport, MetricsTracker};
 pub use server::AgentRuntime;
