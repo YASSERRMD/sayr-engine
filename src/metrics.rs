@@ -136,7 +136,9 @@ impl RunGuard {
 }
 
 pub fn init_prometheus_registry() -> PromRegistry {
-    exporter().with_registry(PromRegistry::new()).init()
+    let registry = PromRegistry::new();
+    let _ = exporter().with_registry(registry.clone()).build();
+    registry
 }
 
 #[cfg(test)]

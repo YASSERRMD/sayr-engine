@@ -184,8 +184,9 @@ impl LanguageModel for OpenAIClient {
             .map_err(|err| AgnoError::LanguageModel(format!("OpenAI request error: {err}")))?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(coalesce_error(resp.status(), &body, "openai"));
+            return Err(coalesce_error(status, &body, "openai"));
         }
 
         if stream {
@@ -399,8 +400,9 @@ impl LanguageModel for AnthropicClient {
             .map_err(|err| AgnoError::LanguageModel(format!("Anthropic request error: {err}")))?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(coalesce_error(resp.status(), &body, "anthropic"));
+            return Err(coalesce_error(status, &body, "anthropic"));
         }
 
         if stream {
@@ -541,8 +543,9 @@ impl LanguageModel for GeminiClient {
             .map_err(|err| AgnoError::LanguageModel(format!("Gemini request error: {err}")))?;
 
         if !resp.status().is_success() {
+            let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            return Err(coalesce_error(resp.status(), &body, "gemini"));
+            return Err(coalesce_error(status, &body, "gemini"));
         }
 
         let parsed: GeminiResponse = resp.json().await.map_err(|err| {
