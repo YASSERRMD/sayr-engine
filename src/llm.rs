@@ -1203,7 +1203,449 @@ impl LanguageModel for MistralClient {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Azure OpenAI Client
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Azure OpenAI client for Azure-hosted models.
+#[derive(Clone)]
+pub struct AzureOpenAIClient {
+    http: reqwest::Client,
+    endpoint: String,
+    api_key: String,
+    deployment: String,
+    api_version: String,
+}
+
+impl AzureOpenAIClient {
+    pub fn new(
+        endpoint: impl Into<String>,
+        api_key: impl Into<String>,
+        deployment: impl Into<String>,
+    ) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("failed to build http client"),
+            endpoint: endpoint.into(),
+            api_key: api_key.into(),
+            deployment: deployment.into(),
+            api_version: "2024-02-01".to_string(),
+        }
+    }
+
+    pub fn with_api_version(mut self, version: impl Into<String>) -> Self {
+        self.api_version = version.into();
+        self
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let endpoint = std::env::var("AZURE_OPENAI_ENDPOINT")
+            .map_err(|_| AgnoError::LanguageModel("AZURE_OPENAI_ENDPOINT not set".into()))?;
+        let api_key = std::env::var("AZURE_OPENAI_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("AZURE_OPENAI_API_KEY not set".into()))?;
+        let deployment = std::env::var("AZURE_OPENAI_DEPLOYMENT")
+            .unwrap_or_else(|_| "gpt-4".to_string());
+        Ok(Self::new(endpoint, api_key, deployment))
+    }
+}
+
+#[async_trait]
+impl LanguageModel for AzureOpenAIClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        // Convert messages to OpenAI format
+        let azure_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+
+                let mut msg = json!({
+                    "role": role,
+                    "content": m.content.clone()
+                });
+
+                if m.role == Role::Tool {
+                    if let Some(ref tc) = m.tool_call {
+                        if let Some(ref id) = tc.id {
+                            msg["tool_call_id"] = json!(id);
+                        }
+                    }
+                }
+
+                if let Some(ref tc) = m.tool_call {
+                    if m.role == Role::Assistant {
+                        msg["tool_calls"] = json!([{
+                            "id": tc.id.clone().unwrap_or_default(),
+                            "type": "function",
+                            "function": {
+                                "name": tc.name,
+                                "arguments": serialize_tool_arguments(&tc.arguments)
+                            }
+                        }]);
+                        msg["content"] = json!(null);
+                    }
+                }
+
+                msg
+            })
+            .collect();
+
+        let mut body = json!({
+            "messages": azure_messages,
+            "stream": stream
+        });
+
+        if !tools.is_empty() {
+            let azure_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters.clone().unwrap_or(json!({"type": "object", "properties": {}}))
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(azure_tools);
+            body["tool_choice"] = json!("auto");
+        }
+
+        let url = format!(
+            "{}/openai/deployments/{}/chat/completions?api-version={}",
+            self.endpoint, self.deployment, self.api_version
+        );
+
+        let resp = self
+            .http
+            .post(&url)
+            .header("api-key", &self.api_key)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Azure OpenAI request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Azure OpenAI"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Azure OpenAI parse error: {e}")))?;
+
+        let choice = json["choices"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| AgnoError::LanguageModel("Azure OpenAI returned no choices".into()))?;
+
+        let message = &choice["message"];
+        let content = message["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message["tool_calls"].as_array() {
+            for call in calls {
+                let id = call["id"].as_str().map(String::from);
+                let func = &call["function"];
+                let name = func["name"].as_str().unwrap_or("").to_string();
+                let args_str = func["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                tool_calls.push(ToolCall {
+                    id,
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Together AI Client
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Together AI client using their OpenAI-compatible API.
+/// Default model: meta-llama/Llama-3.3-70B-Instruct-Turbo
+#[derive(Clone)]
+pub struct TogetherClient {
+    http: reqwest::Client,
+    model: String,
+    api_key: String,
+}
+
+impl TogetherClient {
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("failed to build http client"),
+            model: "meta-llama/Llama-3.3-70B-Instruct-Turbo".to_string(),
+            api_key: api_key.into(),
+        }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("TOGETHER_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("TOGETHER_API_KEY not set".into()))?;
+        Ok(Self::new(api_key))
+    }
+}
+
+#[async_trait]
+impl LanguageModel for TogetherClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        let together_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+                json!({
+                    "role": role,
+                    "content": m.content.clone()
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": together_messages,
+            "stream": stream
+        });
+
+        if !tools.is_empty() {
+            let together_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters.clone().unwrap_or(json!({"type": "object", "properties": {}}))
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(together_tools);
+        }
+
+        let resp = self
+            .http
+            .post("https://api.together.xyz/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Together request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Together"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Together parse error: {e}")))?;
+
+        let choice = json["choices"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| AgnoError::LanguageModel("Together returned no choices".into()))?;
+
+        let message = &choice["message"];
+        let content = message["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message["tool_calls"].as_array() {
+            for call in calls {
+                let id = call["id"].as_str().map(String::from);
+                let func = &call["function"];
+                let name = func["name"].as_str().unwrap_or("").to_string();
+                let args_str = func["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                tool_calls.push(ToolCall {
+                    id,
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Fireworks AI Client
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Fireworks AI client using their OpenAI-compatible API.
+/// Default model: accounts/fireworks/models/llama-v3p1-70b-instruct
+#[derive(Clone)]
+pub struct FireworksClient {
+    http: reqwest::Client,
+    model: String,
+    api_key: String,
+}
+
+impl FireworksClient {
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::builder()
+                .timeout(Duration::from_secs(120))
+                .build()
+                .expect("failed to build http client"),
+            model: "accounts/fireworks/models/llama-v3p1-70b-instruct".to_string(),
+            api_key: api_key.into(),
+        }
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("FIREWORKS_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("FIREWORKS_API_KEY not set".into()))?;
+        Ok(Self::new(api_key))
+    }
+}
+
+#[async_trait]
+impl LanguageModel for FireworksClient {
+    async fn complete_chat(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDescription],
+        stream: bool,
+    ) -> Result<ModelCompletion> {
+        let fireworks_messages: Vec<Value> = messages
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::System => "system",
+                    Role::User => "user",
+                    Role::Assistant => "assistant",
+                    Role::Tool => "tool",
+                };
+                json!({
+                    "role": role,
+                    "content": m.content.clone()
+                })
+            })
+            .collect();
+
+        let mut body = json!({
+            "model": self.model,
+            "messages": fireworks_messages,
+            "stream": stream
+        });
+
+        if !tools.is_empty() {
+            let fireworks_tools: Vec<Value> = tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters.clone().unwrap_or(json!({"type": "object", "properties": {}}))
+                        }
+                    })
+                })
+                .collect();
+            body["tools"] = json!(fireworks_tools);
+        }
+
+        let resp = self
+            .http
+            .post("https://api.fireworks.ai/inference/v1/chat/completions")
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Fireworks request failed: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(coalesce_error(status, &body, "Fireworks"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| AgnoError::LanguageModel(format!("Fireworks parse error: {e}")))?;
+
+        let choice = json["choices"]
+            .as_array()
+            .and_then(|c| c.first())
+            .ok_or_else(|| AgnoError::LanguageModel("Fireworks returned no choices".into()))?;
+
+        let message = &choice["message"];
+        let content = message["content"].as_str().map(String::from);
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message["tool_calls"].as_array() {
+            for call in calls {
+                let id = call["id"].as_str().map(String::from);
+                let func = &call["function"];
+                let name = func["name"].as_str().unwrap_or("").to_string();
+                let args_str = func["arguments"].as_str().unwrap_or("{}");
+                let args: Value = serde_json::from_str(args_str).unwrap_or(json!({}));
+                tool_calls.push(ToolCall {
+                    id,
+                    name,
+                    arguments: args,
+                });
+            }
+        }
+
+        Ok(ModelCompletion { content, tool_calls })
+    }
+}
+
 /// A deterministic model used for tests and demos.
+
 
 pub struct StubModel {
     responses: Mutex<VecDeque<String>>,

@@ -1,88 +1,237 @@
-# agno-rust
+# agno-rust 🦀
 
-Rust-native scaffolding inspired by the [agno](https://github.com/agno-agi/agno) agent runtime. The workspace mirrors the structure of the upstream project with core libraries, runnable cookbook examples, and helper scripts.
+A high-performance Rust implementation of the [agno](https://github.com/agno-agi/agno) AI agent framework. Build production-ready AI agents with multi-provider LLM support, extensive toolkits, and enterprise-grade features.
 
-## Workspace layout
+[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
+[![Tests](https://img.shields.io/badge/tests-53%20passing-brightgreen.svg)]()
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
 
-- `libs/agno-core`: Minimal agent loop, registry, transcript memory, and stub language model used for testing.
-- `agno-rust` (root crate): Full runtime surface mirroring the upstream Python implementation — governance, telemetry, metrics, deployments, workflows, and a lightweight HTTP runtime.
-- `cookbook/echo-agent`: Binary crate demonstrating how to wire tools and a scripted language model into an interactive agent.
-- `cookbook/observability-demo`: Shows RBAC, retries, metrics, and telemetry stitched into an agent run.
-- `scripts/check.sh`: Convenience script to format the workspace and run the full test suite.
+## ✨ Features
 
-## Feature parity highlights
+### 🤖 Multi-Provider LLM Support (10 Providers)
 
-- **Tooling:** Tools expose names, descriptions, and optional JSON parameter schemas that are embedded into model prompts so the LLM understands expected arguments. Tool descriptions are deterministic and serializable for UIs or remote runtimes.
-- **RBAC & privacy:** `AccessController`, `Principal`, and `PrivacyRule` let you block tool calls or redact payloads per tenant.
-- **Metrics & telemetry:** `MetricsTracker`, `RetryPolicy`, `FallbackChain`, and `TelemetryCollector` capture reliability signals, failures, and retry attempts.
-- **Knowledge & memory:** In-memory vector store, retrievers, and transcript memory let agents ground responses in past context.
-- **Workflows & teams:** Build directed workflows, coordinate multiple agents, and expose them over `AgentRuntime`'s HTTP dashboard and SSE event stream.
-- **Config & deployment:** Load configs from files or env overrides and emit container-ready `DeploymentPlan` manifests.
+| Provider | Default Model | Environment Variable |
+|----------|---------------|---------------------|
+| **OpenAI** | gpt-4 | `OPENAI_API_KEY` |
+| **Anthropic** | claude-3-sonnet | `ANTHROPIC_API_KEY` |
+| **Google Gemini** | gemini-pro | `GOOGLE_API_KEY` |
+| **Cohere** | command-r-plus | `COHERE_API_KEY` |
+| **Groq** | llama-3.3-70b-versatile | `GROQ_API_KEY` |
+| **Ollama** | llama3.1 | `OLLAMA_HOST` (optional) |
+| **Mistral** | mistral-large-latest | `MISTRAL_API_KEY` |
+| **Azure OpenAI** | gpt-4 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` |
+| **Together AI** | Llama-3.3-70B-Instruct | `TOGETHER_API_KEY` |
+| **Fireworks** | llama-v3p1-70b-instruct | `FIREWORKS_API_KEY` |
 
-## Quickstart (root crate)
+### 🛠 Built-in Toolkits (13 Toolkits)
+
+| Category | Toolkits | Description |
+|----------|----------|-------------|
+| **Search** | DuckDuckGo, Wikipedia, Arxiv, PubMed | Web, knowledge, and academic search |
+| **Communication** | Slack, Gmail, Discord | Messaging and email integration |
+| **Development** | GitHub, Shell, HTTP | Code repos, commands, API calls |
+| **Data** | SQL, JSON, Calculator | Database queries, data processing |
+
+### 🧠 Memory & Knowledge
+
+- **Vector Stores**: In-memory, PostgreSQL (pgvector), Qdrant
+- **Embedders**: OpenAI, Transformers, Whitespace (testing)
+- **Memory Strategies**: Full, Windowed, Summarized, Token-limited
+- **Document Chunking**: Sliding window chunker with overlap
+
+### 🔒 Enterprise Features
+
+- **Guardrails**: PII detection (SSN, credit card, email, phone), prompt injection detection
+- **RBAC & Privacy**: Access control, principals, privacy rules
+- **Reasoning**: Chain-of-thought orchestration with confidence scoring
+- **MCP Support**: Model Context Protocol client with stdio/HTTP transports
+
+### 📊 Observability
+
+- **Telemetry**: OpenTelemetry tracing with OTLP export
+- **Metrics**: Prometheus exporter for run duration, tool calls, failures
+- **Structured Events**: In-memory collector with batch delivery
+
+### 🚀 Runtime & Deployment
+
+- **HTTP Server**: REST API with SSE streaming
+- **Workflows**: Sequential, parallel, and conditional execution
+- **Teams**: Multi-agent coordination
+- **Config**: File-based or environment variable configuration
+
+## 📦 Installation
+
+Add to your `Cargo.toml`:
+
+```toml
+[dependencies]
+agno-rust = "0.2"
+```
+
+## 🚀 Quick Start
 
 ```rust
-use agno_rust::{Agent, LanguageModel, StubModel, Tool, ToolRegistry};
-use async_trait::async_trait;
-use serde_json::Value;
-
-struct Echo;
-
-#[async_trait]
-impl Tool for Echo {
-    fn name(&self) -> &str { "echo" }
-    fn description(&self) -> &str { "Echoes the input JSON back" }
-    fn parameters(&self) -> Option<Value> {
-        Some(serde_json::json!({
-            "type": "object",
-            "properties": {"text": {"type": "string"}},
-            "required": ["text"],
-        }))
-    }
-
-    async fn call(&self, input: Value) -> agno_rust::Result<Value> { Ok(input) }
-}
+use agno_rust::{Agent, OpenAIClient, ToolRegistry};
+use agno_rust::tools::{calculator_toolkit, duckduckgo_toolkit};
 
 #[tokio::main]
 async fn main() -> agno_rust::Result<()> {
-    let model = StubModel::new(vec![
-        r#"{\"action\":\"call_tool\",\"name\":\"echo\",\"arguments\":{\"text\":\"hi\"}}"#.into(),
-        r#"{\"action\":\"respond\",\"content\":\"Echo complete.\"}"#.into(),
-    ]);
-
+    // Create LLM client
+    let model = OpenAIClient::from_env()?.with_model("gpt-4o");
+    
+    // Register tools
     let mut tools = ToolRegistry::new();
-    tools.register(Echo);
-
+    calculator_toolkit(&mut tools);
+    duckduckgo_toolkit(&mut tools, Default::default());
+    
+    // Create agent
     let mut agent = Agent::new(model).with_tools(tools);
-    let reply = agent.respond("Please echo hi").await?;
-
-    println!("Agent replied: {reply}");
+    
+    // Chat
+    let reply = agent.respond("What is 42 * 17?").await?;
+    println!("{reply}");
+    
     Ok(())
 }
 ```
 
-## Cookbook example
+## 🔧 Toolkit Examples
 
-To run the `echo-agent` cookbook binary:
+### GitHub Integration
 
-```bash
-cargo run -p echo-agent
+```rust
+use agno_rust::tools::{register_github_tools, GitHubClient};
+
+let mut tools = ToolRegistry::new();
+register_github_tools(&mut tools); // Uses GITHUB_TOKEN env var
+
+// Tools: github_search_repos, github_get_repo, github_list_issues, github_read_file
 ```
 
-The script uses a stub language model to request a tool call, routes the call through the registry, and then emits a final assistant reply.
+### Slack Integration
 
-## Development
+```rust
+use agno_rust::tools::{register_slack_tools, SlackClient};
 
-Run the formatter and the full test suite across all workspace members:
+let mut tools = ToolRegistry::new();
+register_slack_tools(&mut tools, std::env::var("SLACK_BOT_TOKEN")?);
+
+// Tools: slack_send_message, slack_list_channels, slack_search
+```
+
+### SQL Database
+
+```rust
+use agno_rust::tools::register_sql_tools;
+
+let mut tools = ToolRegistry::new();
+register_sql_tools(&mut tools, "/path/to/database.db");
+
+// Tools: sql_query (read-only by default), sql_schema
+```
+
+### Academic Research
+
+```rust
+use agno_rust::tools::{register_arxiv_tools, register_pubmed_tools};
+
+let mut tools = ToolRegistry::new();
+register_arxiv_tools(&mut tools);   // Search arXiv papers
+register_pubmed_tools(&mut tools);  // Search PubMed
+
+// Tools: arxiv_search, pubmed_search
+```
+
+## 🧠 Memory Strategies
+
+```rust
+use agno_rust::{WindowedMemoryStrategy, SummarizedMemoryStrategy};
+
+// Keep last 10 messages
+let strategy = WindowedMemoryStrategy::new(10);
+
+// Or use summarization for long conversations
+let strategy = SummarizedMemoryStrategy::new(5, 5);
+```
+
+## 🔒 Guardrails
+
+```rust
+use agno_rust::guardrails::{PiiGuardrail, PromptInjectionGuardrail, GuardrailChain};
+
+let mut chain = GuardrailChain::new();
+chain.add(PiiGuardrail::new());
+chain.add(PromptInjectionGuardrail::new());
+
+// Check input before sending to LLM
+match chain.validate("My SSN is 123-45-6789") {
+    GuardrailResult::Block(reason) => println!("Blocked: {}", reason),
+    GuardrailResult::Pass => println!("Safe to proceed"),
+}
+```
+
+## 🔌 MCP Integration
+
+```rust
+use agno_rust::mcp::{McpClient, StdioTransport, McpTools};
+
+// Connect to MCP server
+let transport = StdioTransport::spawn("npx", &["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])?;
+let client = McpClient::new(transport);
+client.initialize().await?;
+
+// Register MCP tools with agent
+let mcp_tools = McpTools::new(client);
+mcp_tools.register_all(&mut tools).await?;
+```
+
+## 📊 Observability
+
+```rust
+use agno_rust::{init_tracing, init_prometheus_registry};
+
+// Initialize OpenTelemetry tracing
+init_tracing("my-agent", Some("http://otel-collector:4317"));
+
+// Initialize Prometheus metrics
+init_prometheus_registry();
+```
+
+## 🏗 Architecture
+
+```
+agno-rust/
+├── src/
+│   ├── agent.rs        # Core agent loop
+│   ├── llm.rs          # 10 LLM provider clients
+│   ├── tools/          # 13 built-in toolkits
+│   ├── guardrails.rs   # PII & injection detection
+│   ├── memory.rs       # Memory strategies
+│   ├── mcp.rs          # MCP client
+│   ├── knowledge/      # RAG & vector stores
+│   ├── reasoning.rs    # Chain-of-thought
+│   └── server.rs       # HTTP runtime
+├── cookbook/           # Example agents
+└── scripts/            # Development utilities
+```
+
+## 🧪 Testing
 
 ```bash
+# Run all tests
+cargo test
+
+# Run with coverage
+cargo tarpaulin
+
+# Format and lint
 ./scripts/check.sh
 ```
 
-If your environment cannot fetch crates from crates.io, the tests may fail when Cargo tries to download dependencies. The core library tests only rely on the stub language model and the in-memory tool wiring.
+## 📄 License
 
-## Telemetry and metrics
+MIT License - see [LICENSE](LICENSE) for details.
 
-- Initialize tracing with `telemetry::init_tracing(service_name, Some("http://otel-collector:4317"))` to emit OTLP spans. Use `TelemetryLabels` to propagate tenant, tool, and workflow context; `span_with_labels` creates spans with those fields, and `flush_tracer` forces batches out before shutdown.
-- Initialize metrics with `metrics::init_prometheus_registry()` to install a Prometheus exporter. `MetricsTracker` records run duration, tool calls, and failures and propagates the same labels to each metric.
-- `TelemetryCollector` captures structured events and failures in-memory, while `TelemetrySink` exposes a drainable buffer for batch delivery to downstream systems.
+## 🙏 Acknowledgments
+
+Inspired by [agno-agi/agno](https://github.com/agno-agi/agno) - the Python agent framework.
