@@ -107,6 +107,28 @@ pub struct ModelConfig {
     pub model: String,
     #[serde(default)]
     pub api_key: Option<String>,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub organization: Option<String>,
+    #[serde(default)]
+    pub stream: bool,
+    #[serde(default)]
+    pub openai: ProviderConfig,
+    #[serde(default)]
+    pub anthropic: ProviderConfig,
+    #[serde(default)]
+    pub gemini: ProviderConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ProviderConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub organization: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -188,6 +210,12 @@ impl Default for AppConfig {
                 provider: "stub".into(),
                 model: "stub-model".into(),
                 api_key: None,
+                base_url: None,
+                organization: None,
+                stream: false,
+                openai: ProviderConfig::default(),
+                anthropic: ProviderConfig::default(),
+                gemini: ProviderConfig::default(),
             },
             storage: StorageConfig::default(),
         }
@@ -214,6 +242,32 @@ impl AppConfig {
         }
         if let Ok(key) = env::var("AGNO_API_KEY") {
             cfg.model.api_key = Some(key);
+        }
+        if let Ok(openai_key) = env::var("AGNO_OPENAI_API_KEY") {
+            cfg.model.openai.api_key = Some(openai_key);
+        }
+        if let Ok(openai_endpoint) = env::var("AGNO_OPENAI_ENDPOINT") {
+            cfg.model.openai.endpoint = Some(openai_endpoint);
+        }
+        if let Ok(openai_org) = env::var("AGNO_OPENAI_ORG") {
+            cfg.model.openai.organization = Some(openai_org);
+        }
+        if let Ok(anthropic_key) = env::var("AGNO_ANTHROPIC_API_KEY") {
+            cfg.model.anthropic.api_key = Some(anthropic_key);
+        }
+        if let Ok(anthropic_endpoint) = env::var("AGNO_ANTHROPIC_ENDPOINT") {
+            cfg.model.anthropic.endpoint = Some(anthropic_endpoint);
+        }
+        if let Ok(gemini_key) = env::var("AGNO_GEMINI_API_KEY") {
+            cfg.model.gemini.api_key = Some(gemini_key);
+        }
+        if let Ok(gemini_endpoint) = env::var("AGNO_GEMINI_ENDPOINT") {
+            cfg.model.gemini.endpoint = Some(gemini_endpoint);
+        }
+        if let Ok(stream) = env::var("AGNO_STREAMING") {
+            if let Ok(parsed) = stream.parse::<bool>() {
+                cfg.model.stream = parsed;
+            }
         }
         if let Ok(sample) = env::var("AGNO_TELEMETRY_SAMPLE") {
             if let Ok(parsed) = sample.parse::<f32>() {

@@ -127,12 +127,12 @@ mod tests {
     #[tokio::test]
     async fn runs_agents_with_shared_memory() {
         let a_model = StubModel::new(vec![
-            r#"{"action":"respond","content":"a2"}"#.into(),
             r#"{"action":"respond","content":"a1"}"#.into(),
+            r#"{"action":"respond","content":"a2"}"#.into(),
         ]);
         let b_model = StubModel::new(vec![
-            r#"{"action":"respond","content":"b2"}"#.into(),
             r#"{"action":"respond","content":"b1"}"#.into(),
+            r#"{"action":"respond","content":"b2"}"#.into(),
         ]);
 
         let mut team = Team::new("demo");

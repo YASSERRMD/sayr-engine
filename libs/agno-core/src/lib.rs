@@ -14,7 +14,7 @@ mod tool;
 
 pub use agent::{Agent, AgentDirective};
 pub use error::{AgnoError, Result};
-pub use llm::{LanguageModel, StubModel};
+pub use llm::{LanguageModel, ModelCompletion, StubModel};
 pub use memory::ConversationMemory;
 pub use message::{Message, Role, ToolCall, ToolResult};
 pub use tool::{Tool, ToolDescription, ToolRegistry};

@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::error::{AgnoError, Result};
-use crate::llm::LanguageModel;
+use crate::llm::{LanguageModel, ModelCompletion};
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
 use crate::tool::ToolRegistry;
@@ -24,6 +24,7 @@ pub struct Agent<M: LanguageModel> {
     tools: ToolRegistry,
     memory: ConversationMemory,
     max_steps: usize,
+    streaming: bool,
 }
 
 impl<M: LanguageModel> Agent<M> {
@@ -34,6 +35,7 @@ impl<M: LanguageModel> Agent<M> {
             tools: ToolRegistry::new(),
             memory: ConversationMemory::default(),
             max_steps: 6,
+            streaming: false,
         }
     }
 
@@ -61,6 +63,11 @@ impl<M: LanguageModel> Agent<M> {
         self
     }
 
+    pub fn with_streaming(mut self, streaming: bool) -> Self {
+        self.streaming = streaming;
+        self
+    }
+
     pub fn tools_mut(&mut self) -> &mut ToolRegistry {
         &mut self.tools
     }
@@ -74,32 +81,45 @@ impl<M: LanguageModel> Agent<M> {
         self.memory.push(Message::user(user_input));
 
         for _ in 0..self.max_steps {
-            let prompt = self.build_prompt();
-            let raw = self.model.complete(&prompt).await?;
-            let directive: AgentDirective = serde_json::from_str(&raw).map_err(|err| {
-                AgnoError::Protocol(format!(
-                    "Expected JSON directive with `action`, got `{raw}`: {err}"
-                ))
-            })?;
+            let mut request = vec![Message::system(self.build_system_message())];
+            request.extend(self.memory.iter().cloned());
+            let completion = self
+                .model
+                .complete_chat(&request, &self.tools.describe(), self.streaming)
+                .await?;
 
-            match directive {
-                AgentDirective::Respond { content } => {
-                    self.memory.push(Message::assistant(&content));
-                    return Ok(content);
-                }
-                AgentDirective::CallTool { name, arguments } => {
+            if !completion.tool_calls.is_empty() {
+                for mut call in completion.tool_calls {
+                    if call.id.is_none() {
+                        call.id = Some(format!("call-{}", self.memory.len()));
+                    }
+                    let call_id = call.id.clone();
                     self.memory.push(Message {
                         role: Role::Assistant,
-                        content: format!("Calling tool `{name}`"),
-                        tool_call: Some(ToolCall {
-                            name: name.clone(),
-                            arguments: arguments.clone(),
-                        }),
+                        content: format!("Calling tool `{}`", call.name),
+                        tool_call: Some(call.clone()),
                         tool_result: None,
                     });
 
-                    let output = self.tools.call(&name, arguments).await?;
-                    self.memory.push(Message::tool(&name, output));
+                    let output = self.tools.call(&call.name, call.arguments.clone()).await?;
+                    self.memory
+                        .push(Message::tool_with_call(&call.name, output, call_id));
+                }
+                continue;
+            }
+
+            match completion {
+                ModelCompletion {
+                    content: Some(content),
+                    tool_calls,
+                } if tool_calls.is_empty() => {
+                    self.memory.push(Message::assistant(&content));
+                    return Ok(content);
+                }
+                _ => {
+                    return Err(AgnoError::Protocol(
+                        "Model response missing content and tool calls".into(),
+                    ))
                 }
             }
         }
@@ -109,16 +129,14 @@ impl<M: LanguageModel> Agent<M> {
         ))
     }
 
-    fn build_prompt(&self) -> String {
+    fn build_system_message(&self) -> String {
         let mut prompt = String::new();
-        prompt.push_str(&format!("System: {}\n\n", self.system_prompt));
-        prompt.push_str("You must answer with JSON in one of the following formats:\n");
-        prompt.push_str("- {\"action\":\"respond\",\"content\":\"<final assistant message>\"}\n");
+        prompt.push_str(&self.system_prompt);
         prompt.push_str(
-            "- {\"action\":\"call_tool\",\"name\":\"<tool name>\",\"arguments\":{...}}\n\n",
+            "\n\nWhen a tool is relevant, call it with JSON arguments. Otherwise, reply directly.",
         );
         if self.tools.names().is_empty() {
-            prompt.push_str("No tools are available.\n\n");
+            prompt.push_str(" No tools are available.\n\n");
         } else {
             prompt.push_str("Available tools:\n");
             for tool in self.tools.describe() {
@@ -129,24 +147,6 @@ impl<M: LanguageModel> Agent<M> {
             }
             prompt.push('\n');
         }
-
-        prompt.push_str("Conversation so far:\n");
-        for message in self.memory.iter() {
-            prompt.push_str(&format!("[{:?}] {}\n", message.role, message.content));
-            if let Some(call) = &message.tool_call {
-                prompt.push_str(&format!(
-                    "  -> calling {} with {}\n",
-                    call.name, call.arguments
-                ));
-            }
-            if let Some(result) = &message.tool_result {
-                prompt.push_str(&format!(
-                    "  <- {} returned {}\n",
-                    result.name, result.output
-                ));
-            }
-        }
-
         prompt
     }
 }
@@ -220,9 +220,21 @@ mod tests {
 
         #[async_trait]
         impl LanguageModel for RecordingModel {
-            async fn complete(&self, prompt: &str) -> Result<String> {
-                self.prompts.lock().unwrap().push(prompt.to_string());
-                Ok(r#"{"action":"respond","content":"ok"}"#.into())
+            async fn complete_chat(
+                &self,
+                messages: &[Message],
+                _tools: &[crate::tool::ToolDescription],
+                _stream: bool,
+            ) -> Result<ModelCompletion> {
+                let system = messages
+                    .first()
+                    .map(|m| m.content.clone())
+                    .unwrap_or_default();
+                self.prompts.lock().unwrap().push(system);
+                Ok(ModelCompletion {
+                    content: Some("ok".into()),
+                    tool_calls: Vec::new(),
+                })
             }
         }
 
@@ -237,7 +249,7 @@ mod tests {
         let prompts = model.prompts.lock().unwrap();
         let prompt = prompts.first().expect("prompt captured");
 
-        assert!(prompt.contains("echo: Echoes the `text` field back"));
-        assert!(prompt.contains("parameters"));
+        assert!(prompt.contains("Echoes the `text` field back"));
+        assert!(prompt.contains("Available tools"));
     }
 }

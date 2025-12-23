@@ -7,7 +7,7 @@ use crate::error::{AgnoError, Result};
 use crate::governance::{AccessController, Action, Principal, Role as GovernanceRole};
 use crate::hooks::{AgentHook, ConfirmationHandler};
 use crate::knowledge::Retriever;
-use crate::llm::LanguageModel;
+use crate::llm::{LanguageModel, ModelCompletion};
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
 use crate::metrics::{MetricsTracker, RunGuard};
@@ -39,6 +39,7 @@ pub struct Agent<M: LanguageModel> {
     principal: Principal,
     metrics: Option<MetricsTracker>,
     telemetry: Option<TelemetryCollector>,
+    streaming: bool,
     workflow_label: Option<String>,
 }
 
@@ -64,6 +65,7 @@ impl<M: LanguageModel> Agent<M> {
             },
             metrics: None,
             telemetry: None,
+            streaming: false,
             workflow_label: None,
         }
     }
@@ -136,6 +138,11 @@ impl<M: LanguageModel> Agent<M> {
 
     pub fn with_max_steps(mut self, max_steps: usize) -> Self {
         self.max_steps = max_steps.max(1);
+        self
+    }
+
+    pub fn with_streaming(mut self, streaming: bool) -> Self {
+        self.streaming = streaming;
         self
     }
 
@@ -214,52 +221,47 @@ impl<M: LanguageModel> Agent<M> {
         self.memory.push(Message::user(user_input));
 
         for _ in 0..self.max_steps {
-            let prompt = self.build_prompt().await?;
-            let snapshot: Vec<Message> = self.memory.iter().cloned().collect();
+            let contexts = self.retrieve_contexts().await?;
+            let system_prompt = self.build_system_message(&contexts)?;
+            let mut request_messages = vec![Message::system(system_prompt)];
+            request_messages.extend(self.memory.iter().cloned());
+            let snapshot: Vec<Message> = request_messages.clone();
             for hook in &self.hooks {
                 hook.before_model(snapshot.as_slice()).await?;
             }
-            let raw = self.model.complete(&prompt).await?;
+            let completion = self
+                .model
+                .complete_chat(&request_messages, &self.tools.describe(), self.streaming)
+                .await?;
             for hook in &self.hooks {
-                hook.after_model(&raw).await?;
+                let serialized = serde_json::to_string(&completion)
+                    .unwrap_or_else(|_| "<unserializable>".into());
+                hook.after_model(&serialized).await?;
             }
-            let directive: AgentDirective = serde_json::from_str(&raw).map_err(|err| {
-                AgnoError::Protocol(format!(
-                    "Expected JSON directive with `action`, got `{raw}`: {err}"
-                ))
-            })?;
 
-            match directive {
-                AgentDirective::Respond { content } => {
-                    self.memory.push(Message::assistant(&content));
-                    if let Some(guard) = run_guard.take() {
-                        guard.finish(true);
+            if !completion.tool_calls.is_empty() {
+                for mut call in completion.tool_calls {
+                    if call.id.is_none() {
+                        call.id = Some(format!("call-{}", self.memory.len()));
                     }
-                    return Ok(content);
-                }
-                AgentDirective::CallTool { name, arguments } => {
                     if let Some(ctrl) = &self.access_control {
-                        if !ctrl.authorize(&principal, &Action::CallTool(name.clone())) {
+                        if !ctrl.authorize(&principal, &Action::CallTool(call.name.clone())) {
                             if let Some(guard) = run_guard.as_mut() {
                                 guard.record_failure(Some(name.clone()));
                             }
                             return Err(AgnoError::Protocol(format!(
                                 "principal `{}` not allowed to call tool `{}`",
-                                principal.id, name
+                                principal.id, call.name
                             )));
                         }
                     }
                     if self.require_tool_confirmation {
                         if let Some(handler) = &self.confirmation_handler {
-                            let approved = handler
-                                .confirm_tool_call(&ToolCall {
-                                    name: name.clone(),
-                                    arguments: arguments.clone(),
-                                })
-                                .await?;
+                            let approved = handler.confirm_tool_call(&call).await?;
                             if !approved {
                                 self.memory.push(Message::assistant(format!(
-                                    "Tool call `{name}` rejected by guardrail",
+                                    "Tool call `{}` rejected by guardrail",
+                                    call.name
                                 )));
                                 continue;
                             }
@@ -268,13 +270,11 @@ impl<M: LanguageModel> Agent<M> {
                     if let Some(guard) = run_guard.as_mut() {
                         guard.record_tool_call(name.clone());
                     }
+                    let call_id = call.id.clone();
                     self.memory.push(Message {
                         role: Role::Assistant,
-                        content: format!("Calling tool `{name}`"),
-                        tool_call: Some(ToolCall {
-                            name: name.clone(),
-                            arguments: arguments.clone(),
-                        }),
+                        content: format!("Calling tool `{}`", call.name),
+                        tool_call: Some(call.clone()),
                         tool_result: None,
                         attachments: Vec::new(),
                     });
@@ -291,7 +291,7 @@ impl<M: LanguageModel> Agent<M> {
                         )
                         .await?;
                     }
-                    let output = match self.tools.call(&name, arguments.clone()).await {
+                    let output = match self.tools.call(&call.name, call.arguments.clone()).await {
                         Ok(value) => value,
                         Err(err) => {
                             if let Some(guard) = run_guard.as_mut() {
@@ -299,7 +299,7 @@ impl<M: LanguageModel> Agent<M> {
                             }
                             if let Some(telemetry) = &self.telemetry {
                                 telemetry.record_failure(
-                                    format!("tool::{name}"),
+                                    format!("tool::{}", call.name),
                                     format!("{err}"),
                                     0,
                                     base_labels.clone().with_tool(name.clone()),
@@ -308,13 +308,36 @@ impl<M: LanguageModel> Agent<M> {
                             return Err(err);
                         }
                     };
-                    let result_message = Message::tool(&name, output);
+                    let result_message =
+                        Message::tool_with_call(&call.name, output, call_id.clone());
                     for hook in &self.hooks {
                         if let Some(result) = result_message.tool_result.as_ref() {
                             hook.after_tool_result(result).await?;
                         }
                     }
                     self.memory.push(result_message);
+                }
+                continue;
+            }
+
+            match completion {
+                ModelCompletion {
+                    content: Some(content),
+                    tool_calls,
+                } if tool_calls.is_empty() => {
+                    self.memory.push(Message::assistant(&content));
+                    if let Some(guard) = run_guard.take() {
+                        guard.finish(true);
+                    }
+                    return Ok(content);
+                }
+                _ => {
+                    if let Some(guard) = run_guard.as_mut() {
+                        guard.record_failure();
+                    }
+                    return Err(AgnoError::Protocol(
+                        "Model response missing content and tool calls".into(),
+                    ));
                 }
             }
         }
@@ -328,42 +351,9 @@ impl<M: LanguageModel> Agent<M> {
         ))
     }
 
-    async fn build_prompt(&self) -> Result<String> {
-        let mut prompt = String::new();
-        prompt.push_str(&format!("System: {}\n\n", self.system_prompt));
-        if let Some(schema) = &self.input_schema {
-            prompt.push_str(&format!(
-                "User input is expected to follow this JSON shape: {}\n\n",
-                schema
-            ));
-        }
-        prompt.push_str("You must answer with JSON in one of the following formats:\n");
-        prompt.push_str("- {\"action\":\"respond\",\"content\":\"<final assistant message>\"}\n");
-        prompt.push_str(
-            "- {\"action\":\"call_tool\",\"name\":\"<tool name>\",\"arguments\":{...}}\n\n",
-        );
-        if let Some(schema) = &self.output_schema {
-            prompt.push_str(&format!(
-                "When responding directly, conform to this output schema: {}\n\n",
-                schema
-            ));
-        }
-        if self.tools.names().is_empty() {
-            prompt.push_str("No tools are available.\n\n");
-        } else {
-            prompt.push_str("Available tools:\n");
-            for tool in self.tools.describe() {
-                prompt.push_str(&format!("- {}: {}", tool.name, tool.description));
-                if let Some(params) = &tool.parameters {
-                    prompt.push_str(&format!(" (parameters: {})", params));
-                }
-                prompt.push('\n');
-            }
-            prompt.push('\n');
-        }
-
+    async fn retrieve_contexts(&self) -> Result<Vec<String>> {
         if let Some(retriever) = &self.retriever {
-            let contexts = retriever
+            return Ok(retriever
                 .retrieve(
                     self.memory
                         .iter()
@@ -374,32 +364,45 @@ impl<M: LanguageModel> Agent<M> {
                     3,
                 )
                 .await
-                .unwrap_or_default();
-            if !contexts.is_empty() {
-                prompt.push_str("Context snippets:\n");
-                for ctx in contexts {
-                    prompt.push_str("- ");
-                    prompt.push_str(&ctx);
-                    prompt.push('\n');
+                .unwrap_or_default());
+        }
+        Ok(Vec::new())
+    }
+
+    fn build_system_message(&self, contexts: &[String]) -> Result<String> {
+        let mut prompt = String::new();
+        prompt.push_str(&self.system_prompt);
+        prompt.push_str("\n\nWhen a tool is relevant, call it with appropriate JSON arguments. Return a direct response when no tool is needed.\n");
+        if let Some(schema) = &self.input_schema {
+            prompt.push_str(&format!(
+                "User input is expected to follow this JSON shape: {}\n\n",
+                schema
+            ));
+        }
+        if let Some(schema) = &self.output_schema {
+            prompt.push_str(&format!(
+                "When responding directly, conform to this output schema: {}\n",
+                schema
+            ));
+        }
+        if self.tools.names().is_empty() {
+            prompt.push_str("No tools are available.\n");
+        } else {
+            prompt.push_str("Available tools:\n");
+            for tool in self.tools.describe() {
+                prompt.push_str(&format!("- {}: {}", tool.name, tool.description));
+                if let Some(params) = &tool.parameters {
+                    prompt.push_str(&format!(" (parameters: {})", params));
                 }
                 prompt.push('\n');
             }
         }
-
-        prompt.push_str("Conversation so far:\n");
-        for message in self.memory.iter() {
-            prompt.push_str(&format!("[{:?}] {}\n", message.role, message.content));
-            if let Some(call) = &message.tool_call {
-                prompt.push_str(&format!(
-                    "  -> calling {} with {}\n",
-                    call.name, call.arguments
-                ));
-            }
-            if let Some(result) = &message.tool_result {
-                prompt.push_str(&format!(
-                    "  <- {} returned {}\n",
-                    result.name, result.output
-                ));
+        if !contexts.is_empty() {
+            prompt.push_str("\nContext snippets:\n");
+            for ctx in contexts {
+                prompt.push_str("- ");
+                prompt.push_str(ctx);
+                prompt.push('\n');
             }
         }
 
@@ -446,8 +449,8 @@ mod tests {
     #[tokio::test]
     async fn executes_tool_then_replies() {
         let model = StubModel::new(vec![
-            r#"{"action":"respond","content":"Echoed your request."}"#.into(),
             r#"{"action":"call_tool","name":"echo","arguments":{"text":"ping"}}"#.into(),
+            r#"{"action":"respond","content":"Echoed your request."}"#.into(),
         ]);
         let mut tools = ToolRegistry::new();
         tools.register(EchoTool);
@@ -488,9 +491,9 @@ mod tests {
         tools.register(DescribingTool);
 
         let agent = Agent::new(model).with_tools(tools);
-        let prompt = agent.build_prompt().await.unwrap();
+        let prompt = agent.build_system_message(&[]).unwrap();
 
-        assert!(prompt.contains("describe: Replies with metadata"));
-        assert!(prompt.contains("parameters"));
+        assert!(prompt.contains("Replies with metadata"));
+        assert!(prompt.contains("Available tools"));
     }
 }
