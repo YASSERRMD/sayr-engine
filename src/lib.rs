@@ -33,8 +33,11 @@ pub use error::{AgnoError, Result};
 pub use governance::{AccessController, Action, Principal, PrivacyRule, Role as GovernanceRole};
 pub use hooks::{AgentHook, ConfirmationHandler};
 pub use knowledge::{
-    Document, Embedder, InMemoryVectorStore, KnowledgeBase, Retriever, ScoredDocument, VectorStore,
-    WhitespaceEmbedder,
+    Document, DocumentChunker, Embedder, InMemoryVectorStore, KnowledgeBase, OpenAiEmbedder,
+    OpenAiEmbeddingClient, PgVectorClient, PgVectorStore, QdrantClient, QdrantStore,
+    RetrievalConfig, RetrievalEvaluation, RetrievalOverrides, Retriever, ScoredDocument,
+    SearchParams, SimilarityMetric, SlidingWindowChunker, TransformerClient, TransformerEmbedder,
+    VectorStore, WhitespaceEmbedder,
 };
 pub use llm::{LanguageModel, StubModel};
 pub use memory::{ConversationMemory, PersistentConversationMemory};
