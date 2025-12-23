@@ -136,6 +136,26 @@ impl<M: LanguageModel> Agent<M> {
         &mut self.tools
     }
 
+    pub fn tool_names(&self) -> Vec<String> {
+        self.tools.names()
+    }
+
+    pub fn set_principal(&mut self, principal: Principal) {
+        self.principal = principal;
+    }
+
+    pub fn attach_access_control(&mut self, controller: Arc<AccessController>) {
+        self.access_control = Some(controller);
+    }
+
+    pub fn attach_metrics(&mut self, metrics: MetricsTracker) {
+        self.metrics = Some(metrics);
+    }
+
+    pub fn attach_telemetry(&mut self, telemetry: TelemetryCollector) {
+        self.telemetry = Some(telemetry);
+    }
+
     pub fn memory(&self) -> &ConversationMemory {
         &self.memory
     }

@@ -35,7 +35,12 @@ impl TelemetryCollector {
         });
     }
 
-    pub fn record_failure(&self, context: impl Into<String>, error: impl Into<String>, attempt: u32) {
+    pub fn record_failure(
+        &self,
+        context: impl Into<String>,
+        error: impl Into<String>,
+        attempt: u32,
+    ) {
         self.failures.lock().unwrap().push(FailureRecord {
             context: context.into(),
             error: error.into(),
@@ -46,10 +51,7 @@ impl TelemetryCollector {
     pub fn drain(&self) -> (Vec<TelemetryEvent>, Vec<FailureRecord>) {
         let mut events = self.events.lock().unwrap();
         let mut failures = self.failures.lock().unwrap();
-        (
-            std::mem::take(&mut *events),
-            std::mem::take(&mut *failures),
-        )
+        (std::mem::take(&mut *events), std::mem::take(&mut *failures))
     }
 }
 
@@ -67,7 +69,11 @@ impl RetryPolicy {
         }
     }
 
-    pub async fn retry<F, Fut, T>(&self, mut f: F, telemetry: Option<&TelemetryCollector>) -> Result<T>
+    pub async fn retry<F, Fut, T>(
+        &self,
+        mut f: F,
+        telemetry: Option<&TelemetryCollector>,
+    ) -> Result<T>
     where
         F: FnMut(u32) -> Fut,
         Fut: std::future::Future<Output = Result<T>>,
@@ -98,7 +104,9 @@ pub struct FallbackChain<T> {
 impl<T> std::fmt::Debug for FallbackChain<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let labels: Vec<&str> = self.steps.iter().map(|(label, _)| label.as_str()).collect();
-        f.debug_struct("FallbackChain").field("steps", &labels).finish()
+        f.debug_struct("FallbackChain")
+            .field("steps", &labels)
+            .finish()
     }
 }
 
@@ -144,7 +152,10 @@ mod tests {
 
     #[tokio::test]
     async fn retries_until_success() {
-        let policy = RetryPolicy { max_retries: 2, backoff: Duration::from_millis(1) };
+        let policy = RetryPolicy {
+            max_retries: 2,
+            backoff: Duration::from_millis(1),
+        };
         use std::sync::Arc;
         use tokio::sync::Mutex;
 

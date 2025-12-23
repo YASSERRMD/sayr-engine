@@ -39,13 +39,13 @@ pub struct AccessController {
 
 impl AccessController {
     pub fn new() -> Self {
-        let mut controller = Self::default();
+        let controller = Self::default();
         controller.allow(Role::Admin, Action::ManageDeployment);
         controller.allow(Role::Admin, Action::ReadTranscript);
         controller
     }
 
-    pub fn allow(&mut self, role: Role, action: Action) {
+    pub fn allow(&self, role: Role, action: Action) {
         let mut rules = self.rules.write().unwrap();
         rules.entry(role).or_default().insert(action);
     }
@@ -68,7 +68,10 @@ impl AccessController {
         for rule in rules.iter() {
             if let Some(obj) = payload.as_object_mut() {
                 if obj.contains_key(&rule.field) {
-                    obj.insert(rule.field.clone(), serde_json::Value::String(rule.redaction.clone()));
+                    obj.insert(
+                        rule.field.clone(),
+                        serde_json::Value::String(rule.redaction.clone()),
+                    );
                 }
             }
         }
@@ -82,14 +85,21 @@ mod tests {
     #[test]
     fn denies_missing_action() {
         let controller = AccessController::new();
-        let user = Principal { id: "user1".into(), role: Role::User, tenant: None };
+        let user = Principal {
+            id: "user1".into(),
+            role: Role::User,
+            tenant: None,
+        };
         assert!(!controller.authorize(&user, &Action::ManageDeployment));
     }
 
     #[test]
     fn scrubs_fields() {
         let mut controller = AccessController::new();
-        controller.add_privacy_rule(PrivacyRule { field: "secret".into(), redaction: "***".into() });
+        controller.add_privacy_rule(PrivacyRule {
+            field: "secret".into(),
+            redaction: "***".into(),
+        });
         let mut payload = serde_json::json!({"secret": "value", "other": "ok"});
         controller.scrub_payload(&mut payload);
         assert_eq!(payload["secret"], "***");

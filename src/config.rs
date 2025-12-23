@@ -10,7 +10,7 @@ use crate::error::{AgnoError, Result};
 pub struct ServerConfig {
     pub host: String,
     pub port: u16,
-    #[serde(default = "default_tls")] 
+    #[serde(default = "default_tls")]
     pub tls_enabled: bool,
 }
 
@@ -157,9 +157,8 @@ impl Default for AppConfig {
 impl AppConfig {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self> {
         let raw = fs::read_to_string(path)?;
-        let cfg: Self = toml::from_str(&raw).map_err(|err| {
-            AgnoError::Protocol(format!("Failed to parse configuration: {err}"))
-        })?;
+        let cfg: Self = toml::from_str(&raw)
+            .map_err(|err| AgnoError::Protocol(format!("Failed to parse configuration: {err}")))?;
         Ok(cfg)
     }
 
