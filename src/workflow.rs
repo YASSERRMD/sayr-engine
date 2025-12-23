@@ -222,14 +222,12 @@ mod tests {
                 WorkflowNode::Task(Arc::new(task_a)),
                 WorkflowNode::Parallel(vec![
                     WorkflowNode::Task(Arc::new(task_b)),
-                    WorkflowNode::Task(Arc::new(FunctionTask::new(
-                        |ctx: &mut WorkflowContext| {
-                            Box::pin(async move {
-                                ctx.insert("c", json!(true));
-                                Ok(json!("c"))
-                            })
-                        },
-                    ))),
+                    WorkflowNode::Task(Arc::new(FunctionTask::new(|ctx: &mut WorkflowContext| {
+                        Box::pin(async move {
+                            ctx.insert("c", json!(true));
+                            Ok(json!("c"))
+                        })
+                    }))),
                 ]),
             ]),
         );
@@ -244,16 +242,13 @@ mod tests {
 
     #[tokio::test]
     async fn executes_conditional_loop() {
-        let body = WorkflowNode::Task(Arc::new(FunctionTask::new(
-            |ctx: &mut WorkflowContext| {
-                Box::pin(async move {
-                    let next =
-                        ctx.get("count").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
-                    ctx.insert("count", json!(next));
-                    Ok(json!(next))
-                })
-            },
-        )));
+        let body = WorkflowNode::Task(Arc::new(FunctionTask::new(|ctx: &mut WorkflowContext| {
+            Box::pin(async move {
+                let next = ctx.get("count").and_then(|v| v.as_i64()).unwrap_or(0) + 1;
+                ctx.insert("count", json!(next));
+                Ok(json!(next))
+            })
+        })));
 
         let condition: Condition = Arc::new(|ctx: &WorkflowContext| {
             ctx.get("count").and_then(|v| v.as_i64()).unwrap_or(0) < 3

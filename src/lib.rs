@@ -43,7 +43,10 @@ pub use metrics::{EvaluationReport, MetricsTracker};
 pub use server::AgentRuntime;
 pub use storage::{ConversationStore, FileConversationStore, SqlConversationStore};
 pub use team::{Team, TeamEvent};
-pub use telemetry::{FallbackChain, RetryPolicy, TelemetryCollector};
+pub use telemetry::{
+    current_span_attributes, flush_tracer, init_tracing, span_with_labels, FallbackChain,
+    RetryPolicy, TelemetryCollector, TelemetryLabels, TelemetrySink,
+};
 pub use tool::{Tool, ToolDescription, ToolRegistry};
 pub use toolkit::basic_toolkit;
 pub use workflow::{

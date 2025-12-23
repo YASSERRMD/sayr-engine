@@ -44,3 +44,11 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 sysinfo = { version = "0.30", default-features = false, features = ["multithread"] }
 toml = "0.8"
 tempfile = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "registry", "json"] }
+tracing-opentelemetry = "0.24"
+opentelemetry = { version = "0.22", features = ["metrics", "trace", "rt-tokio"] }
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio", "metrics", "trace"] }
+opentelemetry-otlp = { version = "0.15", features = ["grpc-tonic", "trace", "metrics"] }
+opentelemetry-prometheus = "0.15"
+prometheus = { version = "0.13", default-features = false, features = ["proto", "process"] }

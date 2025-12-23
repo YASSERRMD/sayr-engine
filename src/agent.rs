@@ -11,7 +11,7 @@ use crate::llm::LanguageModel;
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role, ToolCall};
 use crate::metrics::{MetricsTracker, RunGuard};
-use crate::telemetry::TelemetryCollector;
+use crate::telemetry::{TelemetryCollector, TelemetryLabels};
 use crate::tool::ToolRegistry;
 
 /// Structured instructions the language model should emit.
@@ -39,6 +39,7 @@ pub struct Agent<M: LanguageModel> {
     principal: Principal,
     metrics: Option<MetricsTracker>,
     telemetry: Option<TelemetryCollector>,
+    workflow_label: Option<String>,
 }
 
 impl<M: LanguageModel> Agent<M> {
@@ -63,6 +64,7 @@ impl<M: LanguageModel> Agent<M> {
             },
             metrics: None,
             telemetry: None,
+            workflow_label: None,
         }
     }
 
@@ -98,6 +100,11 @@ impl<M: LanguageModel> Agent<M> {
 
     pub fn with_telemetry(mut self, telemetry: TelemetryCollector) -> Self {
         self.telemetry = Some(telemetry);
+        self
+    }
+
+    pub fn with_workflow_label(mut self, workflow: impl Into<String>) -> Self {
+        self.workflow_label = Some(workflow.into());
         self
     }
 
@@ -167,14 +174,23 @@ impl<M: LanguageModel> Agent<M> {
             }
         }
 
+        let base_labels = TelemetryLabels {
+            tenant: principal.tenant.clone(),
+            tool: None,
+            workflow: self.workflow_label.clone(),
+        };
         if let Some(telemetry) = &self.telemetry {
             telemetry.record(
                 "user_message",
                 serde_json::json!({"principal": principal.id.clone(), "tenant": principal.tenant}),
+                base_labels.clone(),
             );
         }
 
-        let mut run_guard: Option<RunGuard> = self.metrics.as_ref().map(|m| m.start_run());
+        let mut run_guard: Option<RunGuard> = self
+            .metrics
+            .as_ref()
+            .map(|m| m.start_run(base_labels.clone()));
         self.memory.push(Message::user(user_input));
 
         for _ in 0..self.max_steps {
@@ -205,7 +221,7 @@ impl<M: LanguageModel> Agent<M> {
                     if let Some(ctrl) = &self.access_control {
                         if !ctrl.authorize(&principal, &Action::CallTool(name.clone())) {
                             if let Some(guard) = run_guard.as_mut() {
-                                guard.record_failure();
+                                guard.record_failure(Some(name.clone()));
                             }
                             return Err(AgnoError::Protocol(format!(
                                 "principal `{}` not allowed to call tool `{}`",
@@ -230,7 +246,7 @@ impl<M: LanguageModel> Agent<M> {
                         }
                     }
                     if let Some(guard) = run_guard.as_mut() {
-                        guard.record_tool_call();
+                        guard.record_tool_call(name.clone());
                     }
                     self.memory.push(Message {
                         role: Role::Assistant,
@@ -259,13 +275,14 @@ impl<M: LanguageModel> Agent<M> {
                         Ok(value) => value,
                         Err(err) => {
                             if let Some(guard) = run_guard.as_mut() {
-                                guard.record_failure();
+                                guard.record_failure(Some(name.clone()));
                             }
                             if let Some(telemetry) = &self.telemetry {
                                 telemetry.record_failure(
                                     format!("tool::{name}"),
                                     format!("{err}"),
                                     0,
+                                    base_labels.clone().with_tool(name.clone()),
                                 );
                             }
                             return Err(err);

@@ -80,3 +80,9 @@ Run the formatter and the full test suite across all workspace members:
 ```
 
 If your environment cannot fetch crates from crates.io, the tests may fail when Cargo tries to download dependencies. The core library tests only rely on the stub language model and the in-memory tool wiring.
+
+## Telemetry and metrics
+
+- Initialize tracing with `telemetry::init_tracing(service_name, Some("http://otel-collector:4317"))` to emit OTLP spans. Use `TelemetryLabels` to propagate tenant, tool, and workflow context; `span_with_labels` creates spans with those fields, and `flush_tracer` forces batches out before shutdown.
+- Initialize metrics with `metrics::init_prometheus_registry()` to install a Prometheus exporter. `MetricsTracker` records run duration, tool calls, and failures and propagates the same labels to each metric.
+- `TelemetryCollector` captures structured events and failures in-memory, while `TelemetrySink` exposes a drainable buffer for batch delivery to downstream systems.
