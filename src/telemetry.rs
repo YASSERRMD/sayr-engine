@@ -2,15 +2,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
 
 use opentelemetry::global;
-use opentelemetry::trace::{SpanKind, Tracer};
+use opentelemetry::trace::{Span, SpanKind, Tracer};
 use opentelemetry::KeyValue;
-use opentelemetry_otlp;
+use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use tokio::time::sleep;
 use tracing::{span, Level};
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use crate::error::{AgnoError, Result};
@@ -249,10 +250,10 @@ impl<T> FallbackChain<T> {
     }
 }
 
-pub fn span_with_labels(name: &str, labels: &TelemetryLabels) -> tracing::Span {
+pub fn span_with_labels(_name: &str, labels: &TelemetryLabels) -> tracing::Span {
     span!(
         Level::INFO,
-        name,
+        "labeled_span",
         tenant = labels.tenant.as_deref().unwrap_or(""),
         tool = labels.tool.as_deref().unwrap_or(""),
         workflow = labels.workflow.as_deref().unwrap_or("")
@@ -260,24 +261,32 @@ pub fn span_with_labels(name: &str, labels: &TelemetryLabels) -> tracing::Span {
 }
 
 pub fn init_tracing(service_name: &str, otlp_endpoint: Option<&str>) -> Result<()> {
-    let mut pipeline = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_trace_config(opentelemetry_sdk::trace::config().with_resource(
-            opentelemetry_sdk::Resource::new(vec![KeyValue::new(
-                "service.name",
-                service_name.to_owned(),
-            )]),
-        ));
-    if let Some(endpoint) = otlp_endpoint {
-        pipeline = pipeline.with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(endpoint),
-        );
-    }
-    let tracer = pipeline
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .map_err(|e| AgnoError::Telemetry(e.to_string()))?;
+    let trace_config = opentelemetry_sdk::trace::config().with_resource(
+        opentelemetry_sdk::Resource::new(vec![KeyValue::new(
+            "service.name",
+            service_name.to_owned(),
+        )]),
+    );
+
+    let tracer = if let Some(endpoint) = otlp_endpoint {
+        opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_trace_config(trace_config)
+            .with_exporter(
+                opentelemetry_otlp::new_exporter()
+                    .tonic()
+                    .with_endpoint(endpoint),
+            )
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .map_err(|e| AgnoError::Telemetry(e.to_string()))?
+    } else {
+        opentelemetry_otlp::new_pipeline()
+            .tracing()
+            .with_trace_config(trace_config)
+            .with_exporter(opentelemetry_otlp::new_exporter().tonic())
+            .install_batch(opentelemetry_sdk::runtime::Tokio)
+            .map_err(|e| AgnoError::Telemetry(e.to_string()))?
+    };
 
     let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let fmt_layer = tracing_subscriber::fmt::layer().json().with_target(true);
@@ -303,9 +312,8 @@ pub fn current_span_attributes(labels: &TelemetryLabels) {
 }
 
 pub fn flush_tracer() {
-    if let Err(err) = global::force_flush_tracer_provider() {
-        tracing::warn!("failed to flush tracer: {err}");
-    }
+    // OpenTelemetry 0.22 doesn't expose a flush method; shutdown flushes internally
+    global::shutdown_tracer_provider();
 }
 
 #[cfg(test)]

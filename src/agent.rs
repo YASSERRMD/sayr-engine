@@ -247,7 +247,7 @@ impl<M: LanguageModel> Agent<M> {
                     if let Some(ctrl) = &self.access_control {
                         if !ctrl.authorize(&principal, &Action::CallTool(call.name.clone())) {
                             if let Some(guard) = run_guard.as_mut() {
-                                guard.record_failure(Some(name.clone()));
+                                guard.record_failure(Some(call.name.clone()));
                             }
                             return Err(AgnoError::Protocol(format!(
                                 "principal `{}` not allowed to call tool `{}`",
@@ -268,7 +268,7 @@ impl<M: LanguageModel> Agent<M> {
                         }
                     }
                     if let Some(guard) = run_guard.as_mut() {
-                        guard.record_tool_call(name.clone());
+                        guard.record_tool_call(call.name.clone());
                     }
                     let call_id = call.id.clone();
                     self.memory.push(Message {
@@ -295,14 +295,14 @@ impl<M: LanguageModel> Agent<M> {
                         Ok(value) => value,
                         Err(err) => {
                             if let Some(guard) = run_guard.as_mut() {
-                                guard.record_failure(Some(name.clone()));
+                                guard.record_failure(Some(call.name.clone()));
                             }
                             if let Some(telemetry) = &self.telemetry {
                                 telemetry.record_failure(
                                     format!("tool::{}", call.name),
                                     format!("{err}"),
                                     0,
-                                    base_labels.clone().with_tool(name.clone()),
+                                    base_labels.clone().with_tool(call.name.clone()),
                                 );
                             }
                             return Err(err);
@@ -333,7 +333,7 @@ impl<M: LanguageModel> Agent<M> {
                 }
                 _ => {
                     if let Some(guard) = run_guard.as_mut() {
-                        guard.record_failure();
+                        guard.record_failure(None);
                     }
                     return Err(AgnoError::Protocol(
                         "Model response missing content and tool calls".into(),
