@@ -45,7 +45,10 @@ pub use knowledge::{
     SearchParams, SimilarityMetric, SlidingWindowChunker, TransformerClient, TransformerEmbedder,
     VectorStore, WhitespaceEmbedder,
 };
-pub use llm::{CohereClient, GroqClient, LanguageModel, MistralClient, ModelCompletion, OllamaClient, StubModel};
+pub use llm::{
+    AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel, MistralClient,
+    ModelCompletion, OllamaClient, StubModel, TogetherClient,
+};
 pub use memory::{
     ConversationMemory, FullMemoryStrategy, MemoryStrategy, PersistentConversationMemory,
     SummarizedMemoryStrategy, TokenLimitedMemoryStrategy, WindowedMemoryStrategy,
