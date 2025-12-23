@@ -15,7 +15,7 @@ dependencies = [
 
 [[package]]
 name = "agno-rust"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "async-trait",
  "axum 0.7.9",
