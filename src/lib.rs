@@ -17,6 +17,7 @@ mod llm;
 mod memory;
 mod message;
 mod metrics;
+pub mod reasoning;
 mod server;
 mod storage;
 mod team;

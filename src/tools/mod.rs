@@ -9,8 +9,10 @@
 
 pub mod calculator;
 pub mod duckduckgo;
+pub mod http;
 pub mod shell;
 
 pub use calculator::calculator_toolkit;
 pub use duckduckgo::{duckduckgo_toolkit, DuckDuckGoConfig, SearchResult};
+pub use http::{http_api_toolkit, HttpApiConfig};
 pub use shell::{shell_toolkit, ShellConfig};
