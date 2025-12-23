@@ -28,4 +28,7 @@ pub enum AgnoError {
 
     #[error(transparent)]
     Io(#[from] std::io::Error),
+
+    #[error("telemetry error: {0}")]
+    Telemetry(String),
 }
