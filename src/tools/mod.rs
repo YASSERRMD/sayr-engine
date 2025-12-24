@@ -28,6 +28,7 @@ pub mod pubmed;
 pub mod shell;
 pub mod slack;
 pub mod sql;
+#[cfg(feature = "duckdb")]
 pub mod duckdb;
 pub mod wikipedia;
 
@@ -44,5 +45,6 @@ pub use pubmed::{register_pubmed_tools, PubmedSearchTool};
 pub use shell::{shell_toolkit, ShellConfig};
 pub use slack::{register_slack_tools, SlackClient};
 pub use sql::{register_sql_tools, SqlQueryTool, SqlSchemaTool};
+#[cfg(feature = "duckdb")]
 pub use duckdb::{register_duckdb_tools, DuckDbQueryTool};
 pub use wikipedia::wikipedia_toolkit;

@@ -14,5 +14,4 @@ sayr-engine = { path = "../../", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-pyo3 = { version = "0.20", features = ["extension-module", "abi3-py39"] }
-pyo3-asyncio = { version = "0.20", features = ["tokio-runtime"] }
+pyo3 = { version = "0.23", features = ["extension-module", "abi3-py39"] }

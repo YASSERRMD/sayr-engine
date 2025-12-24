@@ -49,10 +49,10 @@ struct OpenAIChat {
 #[pymethods]
 impl OpenAIChat {
     #[new]
-    #[pyo3(signature = (id="gpt-4o", api_key=None))]
-    fn new(id: String, api_key: Option<String>) -> Self {
+    #[pyo3(signature = (id=None, api_key=None))]
+    fn new(id: Option<String>, api_key: Option<String>) -> Self {
         Self {
-            model_id: id,
+            model_id: id.unwrap_or_else(|| "gpt-4o".to_string()),
             api_key,
         }
     }
@@ -106,7 +106,7 @@ struct Agent {
 #[pymethods]
 impl Agent {
     #[new]
-    #[pyo3(signature = (model=None, description=None, markdown=true))]
+    #[pyo3(signature = (model=None, description=None, _markdown=true))]
     fn new(
         model: Option<PyModelConfig>,
         description: Option<String>,
@@ -650,7 +650,7 @@ impl PyAppConfig {
     }
 
     #[classmethod]
-    fn from_file(_cls: &PyType, path: String) -> PyResult<Self> {
+    fn from_file(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
         let cfg = AppConfig::from_file(path)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
         Ok(Self { inner: cfg })
@@ -730,35 +730,35 @@ struct PyAttachmentKind {
 #[pymethods]
 impl PyAttachmentKind {
     #[classmethod]
-    fn file(_cls: &PyType) -> Self {
+    fn file(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: AttachmentKind::File,
         }
     }
 
     #[classmethod]
-    fn image(_cls: &PyType) -> Self {
+    fn image(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: AttachmentKind::Image,
         }
     }
 
     #[classmethod]
-    fn audio(_cls: &PyType) -> Self {
+    fn audio(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: AttachmentKind::Audio,
         }
     }
 
     #[classmethod]
-    fn video(_cls: &PyType) -> Self {
+    fn video(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: AttachmentKind::Video,
         }
     }
 
     #[classmethod]
-    fn other(_cls: &PyType) -> Self {
+    fn other(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: AttachmentKind::Other,
         }
@@ -784,26 +784,26 @@ struct PyRole {
 #[pymethods]
 impl PyRole {
     #[classmethod]
-    fn system(_cls: &PyType) -> Self {
+    fn system(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: Role::System,
         }
     }
 
     #[classmethod]
-    fn user(_cls: &PyType) -> Self {
+    fn user(_cls: &Bound<'_, PyType>) -> Self {
         Self { inner: Role::User }
     }
 
     #[classmethod]
-    fn assistant(_cls: &PyType) -> Self {
+    fn assistant(_cls: &Bound<'_, PyType>) -> Self {
         Self {
             inner: Role::Assistant,
         }
     }
 
     #[classmethod]
-    fn tool(_cls: &PyType) -> Self {
+    fn tool(_cls: &Bound<'_, PyType>) -> Self {
         Self { inner: Role::Tool }
     }
 
@@ -1010,21 +1010,21 @@ impl PyMessage {
     }
 
     #[classmethod]
-    fn system(_cls: &PyType, content: String) -> Self {
+    fn system(_cls: &Bound<'_, PyType>, content: String) -> Self {
         Self {
             inner: Message::system(content),
         }
     }
 
     #[classmethod]
-    fn user(_cls: &PyType, content: String) -> Self {
+    fn user(_cls: &Bound<'_, PyType>, content: String) -> Self {
         Self {
             inner: Message::user(content),
         }
     }
 
     #[classmethod]
-    fn assistant(_cls: &PyType, content: String) -> Self {
+    fn assistant(_cls: &Bound<'_, PyType>, content: String) -> Self {
         Self {
             inner: Message::assistant(content),
         }
@@ -1032,7 +1032,7 @@ impl PyMessage {
 
     #[classmethod]
     #[pyo3(signature = (name, output_json))]
-    fn tool(_cls: &PyType, name: String, output_json: String) -> PyResult<Self> {
+    fn tool(_cls: &Bound<'_, PyType>, name: String, output_json: String) -> PyResult<Self> {
         let output = serde_json::from_str(&output_json)
             .map_err(|err| PyErr::new::<pyo3::exceptions::PyValueError, _>(err.to_string()))?;
         Ok(Self {
@@ -1243,6 +1243,7 @@ impl PyTelemetryLabels {
 }
 
 #[pyfunction]
+#[pyo3(signature = (service_name, otlp_endpoint=None))]
 fn init_tracing_py(service_name: String, otlp_endpoint: Option<String>) -> PyResult<()> {
     sayr_engine::init_tracing(&service_name, otlp_endpoint.as_deref())
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
@@ -1409,7 +1410,7 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     config.add_class::<PyProviderConfig>()?;
     config.add_class::<PyModelConfig>()?;
     config.add_class::<PyAppConfig>()?;
-    m.add_submodule(config)?;
+    m.add_submodule(&config)?;
 
     let message = PyModule::new(py, "message")?;
     message.add_class::<PyAttachmentKind>()?;
@@ -1418,22 +1419,22 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     message.add_class::<PyToolCall>()?;
     message.add_class::<PyToolResult>()?;
     message.add_class::<PyMessage>()?;
-    m.add_submodule(message)?;
+    m.add_submodule(&message)?;
 
     let tools = PyModule::new(py, "tools")?;
     tools.add_class::<PyTool>()?;
     tools.add_class::<PyToolDescription>()?;
     tools.add_class::<PyToolRegistry>()?;
-    tools.add_function(wrap_pyfunction!(basic_toolkit_py, tools)?)?;
-    m.add_submodule(tools)?;
+    tools.add_function(wrap_pyfunction!(basic_toolkit_py, &tools)?)?;
+    m.add_submodule(&tools)?;
 
     let telemetry = PyModule::new(py, "telemetry")?;
     telemetry.add_class::<PyTelemetryLabels>()?;
-    telemetry.add_function(wrap_pyfunction!(init_tracing_py, telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(current_span_attributes_py, telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(flush_tracer_py, telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(span_with_labels_py, telemetry)?)?;
-    m.add_submodule(telemetry)?;
+    telemetry.add_function(wrap_pyfunction!(init_tracing_py, &telemetry)?)?;
+    telemetry.add_function(wrap_pyfunction!(current_span_attributes_py, &telemetry)?)?;
+    telemetry.add_function(wrap_pyfunction!(flush_tracer_py, &telemetry)?)?;
+    telemetry.add_function(wrap_pyfunction!(span_with_labels_py, &telemetry)?)?;
+    m.add_submodule(&telemetry)?;
 
     let governance = PyModule::new(py, "governance")?;
     governance.add_class::<PyAccessController>()?;
@@ -1441,7 +1442,7 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     governance.add_class::<PyPrincipal>()?;
     governance.add_class::<PyPrivacyRule>()?;
     governance.add_class::<PyGovernanceRole>()?;
-    m.add_submodule(governance)?;
+    m.add_submodule(&governance)?;
 
     let knowledge = PyModule::new(py, "knowledge")?;
     knowledge.add_class::<PyDocument>()?;
@@ -1467,7 +1468,7 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     knowledge.add_class::<PyTransformerEmbedder>()?;
     knowledge.add_class::<PyVectorStore>()?;
     knowledge.add_class::<PyWhitespaceEmbedder>()?;
-    m.add_submodule(knowledge)?;
+    m.add_submodule(&knowledge)?;
 
     let llm = PyModule::new(py, "llm")?;
     llm.add_class::<PyAwsBedrockClient>()?;
@@ -1481,7 +1482,7 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     llm.add_class::<PyOllamaClient>()?;
     llm.add_class::<PyStubModel>()?;
     llm.add_class::<PyTogetherClient>()?;
-    m.add_submodule(llm)?;
+    m.add_submodule(&llm)?;
 
     let memory = PyModule::new(py, "memory")?;
     memory.add_class::<PyConversationMemory>()?;
@@ -1491,27 +1492,27 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     memory.add_class::<PySummarizedMemoryStrategy>()?;
     memory.add_class::<PyTokenLimitedMemoryStrategy>()?;
     memory.add_class::<PyWindowedMemoryStrategy>()?;
-    m.add_submodule(memory)?;
+    m.add_submodule(&memory)?;
 
     let metrics = PyModule::new(py, "metrics")?;
     metrics.add_class::<PyEvaluationReport>()?;
     metrics.add_class::<PyMetricsTracker>()?;
-    m.add_submodule(metrics)?;
+    m.add_submodule(&metrics)?;
 
     let server = PyModule::new(py, "server")?;
     server.add_class::<PyAgentRuntime>()?;
-    m.add_submodule(server)?;
+    m.add_submodule(&server)?;
 
     let storage = PyModule::new(py, "storage")?;
     storage.add_class::<PyConversationStore>()?;
     storage.add_class::<PyFileConversationStore>()?;
     storage.add_class::<PySqlConversationStore>()?;
-    m.add_submodule(storage)?;
+    m.add_submodule(&storage)?;
 
     let team = PyModule::new(py, "team")?;
     team.add_class::<PyTeam>()?;
     team.add_class::<PyTeamEvent>()?;
-    m.add_submodule(team)?;
+    m.add_submodule(&team)?;
 
     let workflow = PyModule::new(py, "workflow")?;
     workflow.add_class::<PyAgentTask>()?;
@@ -1520,12 +1521,12 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     workflow.add_class::<PyWorkflowContext>()?;
     workflow.add_class::<PyWorkflowNode>()?;
     workflow.add_class::<PyWorkflowTask>()?;
-    m.add_submodule(workflow)?;
+    m.add_submodule(&workflow)?;
 
     let core = PyModule::new(py, "core")?;
     core.add_class::<PyAgentDirective>()?;
     core.add_class::<PyDeploymentPlan>()?;
-    core.add_class::<PyAgnoError>()?; // Keeping as generic AgnoError for now or rename?
+    core.add_class::<PySayrError>()?;
     // User asked to rename Agno -> Sayr except attribution. Code constructs are not attribution.
     // I already renamed it to PySayrError in my head-patch.
     // Wait, the line above `core.add_class::<PyAgnoError>()?;` needs to match the struct name.
@@ -1535,7 +1536,7 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     core.add_class::<PySayrError>()?; // Corrected to match struct
     core.add_class::<PyAgentHook>()?;
     core.add_class::<PyConfirmationHandler>()?;
-    m.add_submodule(core)?;
+    m.add_submodule(&core)?;
 
     Ok(())
 }

@@ -49,6 +49,10 @@ exclude = [
     "*.pyc",
 ] 
 
+
+[features]
+default = ["duckdb"]
+
 [dependencies]
 async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
@@ -76,5 +80,5 @@ regex = "1.10"
 base64 = "0.22.1"
 aws-config = "1.8.12"
 aws-sdk-bedrockruntime = "1.120.0"
-duckdb = { version = "1.1.1", features = ["bundled"] }
+duckdb = { version = "1.1.1", features = ["bundled"], optional = true }
 uuid = { version = "1.19.0", features = ["v4", "serde"] }
