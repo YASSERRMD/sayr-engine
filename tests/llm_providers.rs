@@ -1,4 +1,4 @@
-use agno_rust::{CohereClient, LanguageModel};
+use sayr_engine::{CohereClient, LanguageModel};
 
 #[tokio::test]
 async fn test_cohere_client_instantiation() {

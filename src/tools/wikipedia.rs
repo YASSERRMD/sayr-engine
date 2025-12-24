@@ -72,7 +72,7 @@ async fn fetch_wikipedia_summary(query: &str) -> Result<WikipediaSummary> {
 
     let response = client
         .get(&url)
-        .header("User-Agent", "AgnoRust/1.0 (https://github.com/agno-rust)")
+        .header("User-Agent", "SayrEngine/1.0 (https://github.com/YASSERRMD/sayr-engine)")
         .send()
         .await
         .map_err(|e| AgnoError::ToolInvocation {

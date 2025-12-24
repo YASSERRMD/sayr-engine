@@ -22,5 +22,5 @@ autoscale = true
 [deployment]
 replicas = 3
 max_concurrency = 128
-container_image = "ghcr.io/agno-agi/agno-rust:latest"
+container_image = "ghcr.io/YASSERRMD/sayr-engine:latest"
 

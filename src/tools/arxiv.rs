@@ -86,7 +86,7 @@ impl Tool for ArxivSearchTool {
         let response = self
             .client
             .get(&url)
-            .header("User-Agent", "agno-rust/0.2.0")
+            .header("User-Agent", "sayr-engine/0.3.0")
             .send()
             .await
             .map_err(|e| crate::error::AgnoError::Protocol(format!("arXiv request failed: {}", e)))?;

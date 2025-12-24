@@ -54,6 +54,27 @@ pub struct OpenAIClient {
 }
 
 impl OpenAIClient {
+    pub fn new(api_key: impl Into<String>) -> Self {
+        Self {
+            http: reqwest::Client::new(),
+            model: "gpt-4-turbo-preview".to_string(),
+            api_key: api_key.into(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            organization: None,
+        }
+    }
+
+    pub fn from_env() -> Result<Self> {
+        let api_key = std::env::var("OPENAI_API_KEY")
+            .map_err(|_| AgnoError::LanguageModel("OPENAI_API_KEY not found".into()))?;
+        Ok(Self::new(api_key))
+    }
+
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
     pub fn from_config(cfg: &ModelConfig) -> Result<Self> {
         let api_key = cfg
             .openai
@@ -588,7 +609,7 @@ impl CohereClient {
                 .timeout(Duration::from_secs(60))
                 .build()
                 .expect("failed to build http client"),
-            model: "command-r-plus".to_string(),
+            model: "command-a-03-2025".to_string(),
             api_key: api_key.into(),
             endpoint: "https://api.cohere.ai/v2/chat".to_string(),
         }
@@ -755,7 +776,20 @@ impl LanguageModel for CohereClient {
         })?;
 
         let content = body.message.and_then(|m| {
-            m.content.and_then(|c| c.get("text").and_then(|v| v.as_str().map(|s| s.to_string())))
+            m.content.and_then(|c| {
+                if let Some(arr) = c.as_array() {
+                    let mut text = String::new();
+                    for item in arr {
+                        // Check if type is text (or implicit if just text field exists)
+                        if let Some(t) = item.get("text").and_then(|v| v.as_str()) {
+                            text.push_str(t);
+                        }
+                    }
+                    if text.is_empty() { None } else { Some(text) }
+                } else {
+                     c.get("text").and_then(|v| v.as_str().map(|s| s.to_string()))
+                }
+            })
         });
 
         let mut tool_calls = Vec::new();

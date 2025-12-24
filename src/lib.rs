@@ -47,7 +47,7 @@ pub use knowledge::{
 };
 pub use llm::{
     AwsBedrockClient, AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel,
-    MistralClient, ModelCompletion, OllamaClient, StubModel, TogetherClient,
+    MistralClient, ModelCompletion, OllamaClient, OpenAIClient, StubModel, TogetherClient,
 };
 pub use memory::{
     ConversationMemory, FullMemoryStrategy, MemoryStrategy, PersistentConversationMemory,

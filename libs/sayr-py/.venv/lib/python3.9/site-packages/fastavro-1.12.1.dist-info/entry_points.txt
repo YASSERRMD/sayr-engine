@@ -1,0 +1,3 @@
+[console_scripts]
+fastavro = fastavro.__main__:main
+
