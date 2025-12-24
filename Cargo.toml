@@ -32,7 +32,22 @@ readme = "README.md"
 repository = "https://github.com/YASSERRMD/agno-rust"
 homepage = "https://github.com/YASSERRMD/agno-rust"
 keywords = ["agno","agent","ai","rust","core"]
-categories = ["development-tools","algorithms"] 
+categories = ["development-tools","algorithms"]
+exclude = [
+    ".venv",
+    ".venv/**",
+    "venv",
+    "venv/**",
+    "libs/sayr-py/.venv",
+    "libs/sayr-py/.venv/**",
+    "agno-reference",
+    "agno-reference/**",
+    "target_bench",
+    "target_bench/**",
+    "__pycache__",
+    "**/__pycache__",
+    "*.pyc",
+] 
 
 [dependencies]
 async-trait = "0.1"
