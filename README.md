@@ -1,5 +1,9 @@
 # SAYR Engine
 
+<p align="center">
+  <img src="assets/logo.png" alt="SAYR Engine Logo" width="200">
+</p>
+
 ![Crates.io](https://img.shields.io/crates/v/sayr-engine)
 ![License](https://img.shields.io/crates/l/sayr-engine)
 
@@ -252,8 +256,14 @@ cargo tarpaulin
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+This project is licensed under the **MIT License**. See the [`LICENSE`](./LICENSE) file for the full license text.
 
-## Acknowledgments
+## Credits & Acknowledgments
 
-Inspired by [agno-agi/agno](https://github.com/agno-agi/agno) - the Python agent framework.
+SAYR Engine is inspired by and builds upon the ideas from:
+
+- **[Agno](https://github.com/agno-agi/agno)** - The original Python agent framework by Agno AGI. Check out their excellent work!
+
+---
+
+*Built with ❤️ in Rust*
