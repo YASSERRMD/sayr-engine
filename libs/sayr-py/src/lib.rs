@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sayr_engine::{
     basic_toolkit, Agent as RustAgent, AppConfig, Attachment, AttachmentKind, DeploymentConfig,
     Message, ModelConfig, OpenAIClient, ProviderConfig, Role, SecurityConfig, ServerConfig,
-    TelemetryConfig, TelemetryLabels, ToolCall, ToolDescription, ToolRegistry, ToolResult,
+    TelemetryConfig, ToolCall, ToolDescription, ToolRegistry, ToolResult,
     CohereClient,
 };
 
@@ -118,11 +118,24 @@ impl Agent {
             .unwrap();
 
         // Default to OpenAI if no model config provided
-        let model_config = model.unwrap_or_else(|| PyModelConfig::new(
-            "openai".to_string(),
-            "gpt-4".to_string(),
-            None, None, None, false, None, None, None, None
-        ));
+        let model_config = model.unwrap_or_else(|| {
+            #[cfg(feature = "aws")]
+            {
+                PyModelConfig::new(
+                    "openai".to_string(),
+                    "gpt-4".to_string(),
+                    None, None, None, false, None, None, None, None, None
+                )
+            }
+            #[cfg(not(feature = "aws"))]
+            {
+                PyModelConfig::new(
+                    "openai".to_string(),
+                    "gpt-4".to_string(),
+                    None, None, None, false, None, None, None, None, None
+                )
+            }
+        });
 
         let inner = match model_config.provider().as_str() {
             "cohere" => {
@@ -485,7 +498,7 @@ struct PyModelConfig {
 #[pymethods]
 impl PyModelConfig {
     #[new]
-    #[pyo3(signature = (provider="stub".to_string(), model="stub-model".to_string(), api_key=None, base_url=None, organization=None, stream=false, openai=None, anthropic=None, gemini=None, cohere=None))]
+    #[pyo3(signature = (provider="stub".to_string(), model="stub-model".to_string(), api_key=None, base_url=None, organization=None, stream=false, openai=None, anthropic=None, gemini=None, cohere=None, bedrock=None))]
     fn new(
         provider: String,
         model: String,
@@ -497,7 +510,11 @@ impl PyModelConfig {
         anthropic: Option<PyProviderConfig>,
         gemini: Option<PyProviderConfig>,
         cohere: Option<PyProviderConfig>,
+        bedrock: Option<PyProviderConfig>,
     ) -> Self {
+        #[cfg(not(feature = "aws"))]
+        let _ = bedrock;
+
         Self {
             inner: ModelConfig {
                 provider,
@@ -510,6 +527,8 @@ impl PyModelConfig {
                 anthropic: anthropic.map(|p| p.inner).unwrap_or_default(),
                 gemini: gemini.map(|p| p.inner).unwrap_or_default(),
                 cohere: cohere.map(|p| p.inner).unwrap_or_default(),
+                #[cfg(feature = "aws")]
+                bedrock: bedrock.map(|p| p.inner).unwrap_or_default(),
             },
         }
     }
@@ -1191,19 +1210,22 @@ fn basic_toolkit_py() -> PyToolRegistry {
 // Telemetry bindings
 // ─────────────────────────────────────────────────────────────────────────────
 
+#[cfg(feature = "telemetry")]
 #[pyclass(name = "TelemetryLabels")]
 #[derive(Clone, Default)]
 struct PyTelemetryLabels {
-    inner: TelemetryLabels,
+    inner: sayr_engine::TelemetryLabels,
 }
 
+#[cfg(feature = "telemetry")]
 #[pymethods]
 impl PyTelemetryLabels {
+    #[cfg(feature = "telemetry")]
     #[new]
     #[pyo3(signature = (tenant=None, tool=None, workflow=None))]
     fn new(tenant: Option<String>, tool: Option<String>, workflow: Option<String>) -> Self {
         Self {
-            inner: TelemetryLabels {
+            inner: sayr_engine::TelemetryLabels {
                 tenant,
                 tool,
                 workflow,
@@ -1242,6 +1264,7 @@ impl PyTelemetryLabels {
     }
 }
 
+#[cfg(feature = "telemetry")]
 #[pyfunction]
 #[pyo3(signature = (service_name, otlp_endpoint=None))]
 fn init_tracing_py(service_name: String, otlp_endpoint: Option<String>) -> PyResult<()> {
@@ -1249,16 +1272,19 @@ fn init_tracing_py(service_name: String, otlp_endpoint: Option<String>) -> PyRes
         .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
 }
 
+#[cfg(feature = "telemetry")]
 #[pyfunction]
 fn current_span_attributes_py(labels: PyTelemetryLabels) {
     sayr_engine::current_span_attributes(&labels.inner);
 }
 
+#[cfg(feature = "telemetry")]
 #[pyfunction]
 fn flush_tracer_py() {
     sayr_engine::flush_tracer();
 }
 
+#[cfg(feature = "telemetry")]
 #[pyfunction]
 fn span_with_labels_py(_name: String, labels: PyTelemetryLabels) {
     let _span = sayr_engine::span_with_labels("python", &labels.inner);
@@ -1428,13 +1454,16 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     tools.add_function(wrap_pyfunction!(basic_toolkit_py, &tools)?)?;
     m.add_submodule(&tools)?;
 
-    let telemetry = PyModule::new(py, "telemetry")?;
-    telemetry.add_class::<PyTelemetryLabels>()?;
-    telemetry.add_function(wrap_pyfunction!(init_tracing_py, &telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(current_span_attributes_py, &telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(flush_tracer_py, &telemetry)?)?;
-    telemetry.add_function(wrap_pyfunction!(span_with_labels_py, &telemetry)?)?;
-    m.add_submodule(&telemetry)?;
+    #[cfg(feature = "telemetry")]
+    {
+        let telemetry = PyModule::new(py, "telemetry")?;
+        telemetry.add_class::<PyTelemetryLabels>()?;
+        telemetry.add_function(wrap_pyfunction!(init_tracing_py, &telemetry)?)?;
+        telemetry.add_function(wrap_pyfunction!(current_span_attributes_py, &telemetry)?)?;
+        telemetry.add_function(wrap_pyfunction!(flush_tracer_py, &telemetry)?)?;
+        telemetry.add_function(wrap_pyfunction!(span_with_labels_py, &telemetry)?)?;
+        m.add_submodule(&telemetry)?;
+    }
 
     let governance = PyModule::new(py, "governance")?;
     governance.add_class::<PyAccessController>()?;

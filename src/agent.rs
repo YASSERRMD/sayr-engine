@@ -10,7 +10,9 @@ use crate::knowledge::Retriever;
 use crate::llm::{LanguageModel, ModelCompletion};
 use crate::memory::ConversationMemory;
 use crate::message::{Message, Role};
+#[cfg(feature = "telemetry")]
 use crate::metrics::{MetricsTracker, RunGuard};
+#[cfg(feature = "telemetry")]
 use crate::telemetry::{TelemetryCollector, TelemetryLabels};
 use crate::tool::ToolRegistry;
 
@@ -37,7 +39,9 @@ pub struct Agent<M: LanguageModel> {
     confirmation_handler: Option<Arc<dyn ConfirmationHandler>>,
     access_control: Option<Arc<AccessController>>,
     principal: Principal,
+    #[cfg(feature = "telemetry")]
     metrics: Option<MetricsTracker>,
+    #[cfg(feature = "telemetry")]
     telemetry: Option<TelemetryCollector>,
     streaming: bool,
     workflow_label: Option<String>,
@@ -63,7 +67,9 @@ impl<M: LanguageModel> Agent<M> {
                 role: GovernanceRole::User,
                 tenant: None,
             },
+            #[cfg(feature = "telemetry")]
             metrics: None,
+            #[cfg(feature = "telemetry")]
             telemetry: None,
             streaming: false,
             workflow_label: None,
@@ -95,11 +101,13 @@ impl<M: LanguageModel> Agent<M> {
         self
     }
 
+    #[cfg(feature = "telemetry")]
     pub fn with_metrics(mut self, metrics: MetricsTracker) -> Self {
         self.metrics = Some(metrics);
         self
     }
 
+    #[cfg(feature = "telemetry")]
     pub fn with_telemetry(mut self, telemetry: TelemetryCollector) -> Self {
         self.telemetry = Some(telemetry);
         self
@@ -162,10 +170,12 @@ impl<M: LanguageModel> Agent<M> {
         self.access_control = Some(controller);
     }
 
+    #[cfg(feature = "telemetry")]
     pub fn attach_metrics(&mut self, metrics: MetricsTracker) {
         self.metrics = Some(metrics);
     }
 
+    #[cfg(feature = "telemetry")]
     pub fn attach_telemetry(&mut self, telemetry: TelemetryCollector) {
         self.telemetry = Some(telemetry);
     }
@@ -201,11 +211,13 @@ impl<M: LanguageModel> Agent<M> {
             }
         }
 
+        #[cfg(feature = "telemetry")]
         let base_labels = TelemetryLabels {
             tenant: principal.tenant.clone(),
             tool: None,
             workflow: self.workflow_label.clone(),
         };
+        #[cfg(feature = "telemetry")]
         if let Some(telemetry) = &self.telemetry {
             telemetry.record(
                 "user_message",
@@ -214,6 +226,7 @@ impl<M: LanguageModel> Agent<M> {
             );
         }
 
+        #[cfg(feature = "telemetry")]
         let mut run_guard: Option<RunGuard> = self
             .metrics
             .as_ref()
@@ -246,6 +259,7 @@ impl<M: LanguageModel> Agent<M> {
                     }
                     if let Some(ctrl) = &self.access_control {
                         if !ctrl.authorize(&principal, &Action::CallTool(call.name.clone())) {
+                            #[cfg(feature = "telemetry")]
                             if let Some(guard) = run_guard.as_mut() {
                                 guard.record_failure(Some(call.name.clone()));
                             }
@@ -267,6 +281,7 @@ impl<M: LanguageModel> Agent<M> {
                             }
                         }
                     }
+                    #[cfg(feature = "telemetry")]
                     if let Some(guard) = run_guard.as_mut() {
                         guard.record_tool_call(call.name.clone());
                     }
@@ -294,9 +309,11 @@ impl<M: LanguageModel> Agent<M> {
                     let output = match self.tools.call(&call.name, call.arguments.clone()).await {
                         Ok(value) => value,
                         Err(err) => {
+                            #[cfg(feature = "telemetry")]
                             if let Some(guard) = run_guard.as_mut() {
                                 guard.record_failure(Some(call.name.clone()));
                             }
+                            #[cfg(feature = "telemetry")]
                             if let Some(telemetry) = &self.telemetry {
                                 telemetry.record_failure(
                                     format!("tool::{}", call.name),
@@ -326,12 +343,14 @@ impl<M: LanguageModel> Agent<M> {
                     tool_calls,
                 } if tool_calls.is_empty() => {
                     self.memory.push(Message::assistant(&content));
+                    #[cfg(feature = "telemetry")]
                     if let Some(guard) = run_guard.take() {
                         guard.finish(true);
                     }
                     return Ok(content);
                 }
                 _ => {
+                    #[cfg(feature = "telemetry")]
                     if let Some(guard) = run_guard.as_mut() {
                         guard.record_failure(None);
                     }
@@ -342,6 +361,7 @@ impl<M: LanguageModel> Agent<M> {
             }
         }
 
+        #[cfg(feature = "telemetry")]
         if let Some(guard) = run_guard {
             guard.finish(false);
         }

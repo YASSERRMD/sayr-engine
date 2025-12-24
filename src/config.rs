@@ -121,8 +121,22 @@ pub struct ModelConfig {
     pub gemini: ProviderConfig,
     #[serde(default)]
     pub cohere: ProviderConfig,
+    #[cfg(feature = "aws")]
+    #[serde(default)]
+    pub bedrock: ProviderConfig,
 }
 
+#[cfg(feature = "persistence")]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ProviderConfig {
+    #[serde(default)]
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    #[serde(default)]
+    pub organization: Option<String>,
+}
+#[cfg(not(feature = "persistence"))]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct ProviderConfig {
     #[serde(default)]
@@ -133,6 +147,7 @@ pub struct ProviderConfig {
     pub organization: Option<String>,
 }
 
+#[cfg(feature = "persistence")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum StorageBackend {
@@ -140,12 +155,14 @@ pub enum StorageBackend {
     Sqlite,
 }
 
+#[cfg(feature = "persistence")]
 impl Default for StorageBackend {
     fn default() -> Self {
         StorageBackend::File
     }
 }
 
+#[cfg(feature = "persistence")]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StorageConfig {
     #[serde(default)]
@@ -156,6 +173,7 @@ pub struct StorageConfig {
     pub database_url: Option<String>,
 }
 
+#[cfg(feature = "persistence")]
 impl Default for StorageConfig {
     fn default() -> Self {
         Self {
@@ -166,6 +184,7 @@ impl Default for StorageConfig {
     }
 }
 
+#[cfg(feature = "persistence")]
 fn default_storage_path() -> String {
     "conversation.jsonl".into()
 }
@@ -180,6 +199,7 @@ pub struct AppConfig {
     #[serde(default)]
     pub deployment: DeploymentConfig,
     pub model: ModelConfig,
+    #[cfg(feature = "persistence")]
     #[serde(default)]
     pub storage: StorageConfig,
 }
@@ -219,7 +239,10 @@ impl Default for AppConfig {
                 anthropic: ProviderConfig::default(),
                 gemini: ProviderConfig::default(),
                 cohere: ProviderConfig::default(),
+                #[cfg(feature = "aws")]
+                bedrock: ProviderConfig::default(),
             },
+            #[cfg(feature = "persistence")]
             storage: StorageConfig::default(),
         }
     }
@@ -283,17 +306,22 @@ impl AppConfig {
                 cfg.telemetry.sample_rate = parsed.clamp(0.01, 1.0);
             }
         }
-        if let Ok(backend) = env::var("AGNO_STORAGE_BACKEND") {
-            cfg.storage.backend = match backend.to_ascii_lowercase().as_str() {
-                "sqlite" => StorageBackend::Sqlite,
-                _ => StorageBackend::File,
-            };
+        if let Ok(_backend) = env::var("AGNO_STORAGE_BACKEND") {
+            #[cfg(feature = "persistence")]
+            {
+                cfg.storage.backend = match _backend.to_ascii_lowercase().as_str() {
+                    "sqlite" => StorageBackend::Sqlite,
+                    _ => StorageBackend::File,
+                };
+            }
         }
-        if let Ok(path) = env::var("AGNO_STORAGE_PATH") {
-            cfg.storage.file_path = path;
+        if let Ok(_path) = env::var("AGNO_STORAGE_PATH") {
+            #[cfg(feature = "persistence")]
+            { cfg.storage.file_path = _path; }
         }
-        if let Ok(url) = env::var("AGNO_DATABASE_URL") {
-            cfg.storage.database_url = Some(url);
+        if let Ok(_url) = env::var("AGNO_DATABASE_URL") {
+            #[cfg(feature = "persistence")]
+            { cfg.storage.database_url = Some(_url); }
         }
         Ok(cfg)
     }
@@ -325,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "persistence")]
     fn overrides_storage_backend() {
         let mut file = NamedTempFile::new().unwrap();
         writeln!(

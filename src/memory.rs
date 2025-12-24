@@ -1,4 +1,5 @@
 use crate::message::Message;
+#[cfg(feature = "persistence")]
 use crate::storage::ConversationStore;
 
 /// In-memory transcript storage.
@@ -29,13 +30,14 @@ impl ConversationMemory {
     }
 }
 
-/// A conversation memory that persists messages through a pluggable backend.
-#[derive(Clone, Debug)]
+#[cfg(feature = "persistence")]
+#[derive(Clone)]
 pub struct PersistentConversationMemory<S: ConversationStore> {
     store: S,
     inner: ConversationMemory,
 }
 
+#[cfg(feature = "persistence")]
 impl<S: ConversationStore> PersistentConversationMemory<S> {
     pub fn new(store: S) -> Self {
         Self {

@@ -19,9 +19,12 @@ mod memory;
 mod message;
 mod metrics;
 pub mod reasoning;
+#[cfg(feature = "server")]
 mod server;
+#[cfg(feature = "persistence")]
 mod storage;
 mod team;
+#[cfg(feature = "telemetry")]
 mod telemetry;
 mod tool;
 mod toolkit;
@@ -45,20 +48,29 @@ pub use knowledge::{
     SearchParams, SimilarityMetric, SlidingWindowChunker, TransformerClient, TransformerEmbedder,
     VectorStore, WhitespaceEmbedder,
 };
+#[cfg(feature = "aws")]
+pub use llm::AwsBedrockClient;
 pub use llm::{
-    AwsBedrockClient, AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel,
+    AzureOpenAIClient, CohereClient, FireworksClient, GroqClient, LanguageModel,
     MistralClient, ModelCompletion, OllamaClient, OpenAIClient, StubModel, TogetherClient,
 };
 pub use memory::{
-    ConversationMemory, FullMemoryStrategy, MemoryStrategy, PersistentConversationMemory,
+    ConversationMemory, FullMemoryStrategy, MemoryStrategy, 
     SummarizedMemoryStrategy, TokenLimitedMemoryStrategy, WindowedMemoryStrategy,
 };
+#[cfg(feature = "persistence")]
+pub use memory::PersistentConversationMemory;
 
 pub use message::{Attachment, AttachmentKind, Message, Role, ToolCall, ToolResult};
-pub use metrics::{EvaluationReport, MetricsTracker};
+pub use metrics::EvaluationReport;
+#[cfg(feature = "telemetry")]
+pub use metrics::MetricsTracker;
+#[cfg(feature = "server")]
 pub use server::AgentRuntime;
+#[cfg(feature = "persistence")]
 pub use storage::{ConversationStore, FileConversationStore, SqlConversationStore};
 pub use team::{Team, TeamEvent};
+#[cfg(feature = "telemetry")]
 pub use telemetry::{
     current_span_attributes, flush_tracer, init_tracing, span_with_labels, FallbackChain,
     RetryPolicy, TelemetryCollector, TelemetryLabels, TelemetrySink,

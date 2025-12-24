@@ -1,16 +1,25 @@
 //! Metrics tracking and evaluation.
 #![allow(dead_code)]
 
+#[cfg(feature = "telemetry")]
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(feature = "telemetry")]
+use std::time::Instant;
 
+#[cfg(feature = "telemetry")]
 use opentelemetry::global;
+#[cfg(feature = "telemetry")]
 use opentelemetry::metrics::{Counter, Histogram, Meter};
+#[cfg(feature = "telemetry")]
 use opentelemetry_prometheus::exporter;
+#[cfg(feature = "telemetry")]
 use prometheus::Registry as PromRegistry;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "telemetry")]
 use sysinfo::System;
 
+#[cfg(feature = "telemetry")]
 use crate::telemetry::TelemetryLabels;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -20,6 +29,7 @@ pub struct EvaluationReport {
     pub tool_calls: usize,
     pub failures: usize,
     pub success: bool,
+    #[cfg(feature = "telemetry")]
     pub labels: TelemetryLabels,
 }
 
@@ -33,6 +43,7 @@ impl EvaluationReport {
     }
 }
 
+#[cfg(feature = "telemetry")]
 #[derive(Clone)]
 pub struct MetricsTracker {
     reports: Arc<Mutex<Vec<EvaluationReport>>>,
@@ -43,6 +54,7 @@ pub struct MetricsTracker {
     duration_histogram: Histogram<f64>,
 }
 
+#[cfg(feature = "telemetry")]
 impl Default for MetricsTracker {
     fn default() -> Self {
         let meter = global::meter("agno-metrics");
@@ -73,6 +85,7 @@ impl Default for MetricsTracker {
     }
 }
 
+#[cfg(feature = "telemetry")]
 impl MetricsTracker {
     pub fn start_run(&self, labels: TelemetryLabels) -> RunGuard {
         self.run_counter.add(1, &labels.as_attributes());
@@ -91,6 +104,7 @@ impl MetricsTracker {
     }
 }
 
+#[cfg(feature = "telemetry")]
 pub struct RunGuard {
     start: Instant,
     tool_calls: usize,
@@ -100,6 +114,7 @@ pub struct RunGuard {
     labels: TelemetryLabels,
 }
 
+#[cfg(feature = "telemetry")]
 impl RunGuard {
     pub fn record_tool_call(&mut self, tool: impl Into<String>) {
         self.tool_calls += 1;
@@ -138,13 +153,14 @@ impl RunGuard {
     }
 }
 
+#[cfg(feature = "telemetry")]
 pub fn init_prometheus_registry() -> PromRegistry {
     let registry = PromRegistry::new();
     let _ = exporter().with_registry(registry.clone()).build();
     registry
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "telemetry"))]
 mod tests {
     use super::*;
 

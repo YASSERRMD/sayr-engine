@@ -1702,11 +1702,13 @@ impl LanguageModel for FireworksClient {
 /// AWS Bedrock client.
 /// Currently optimized for Anthropic Claude 3 models on Bedrock.
 #[derive(Clone)]
+#[cfg(feature = "aws")]
 pub struct AwsBedrockClient {
     client: std::sync::Arc<aws_sdk_bedrockruntime::Client>,
     model_id: String,
 }
 
+#[cfg(feature = "aws")]
 impl AwsBedrockClient {
     pub async fn new(region: Option<String>) -> Self {
         let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest());
@@ -1728,6 +1730,7 @@ impl AwsBedrockClient {
     }
 }
 
+#[cfg(feature = "aws")]
 #[async_trait]
 impl LanguageModel for AwsBedrockClient {
     async fn complete_chat(

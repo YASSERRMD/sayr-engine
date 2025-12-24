@@ -23,10 +23,12 @@ pub mod github;
 pub mod gmail;
 pub mod http;
 pub mod json;
+#[cfg(feature = "persistence")]
 pub mod postgres;
 pub mod pubmed;
 pub mod shell;
 pub mod slack;
+#[cfg(feature = "persistence")]
 pub mod sql;
 #[cfg(feature = "duckdb")]
 pub mod duckdb;
@@ -40,10 +42,12 @@ pub use github::{register_github_tools, GitHubClient};
 pub use gmail::{register_gmail_tools, GmailClient};
 pub use http::{http_api_toolkit, HttpApiConfig};
 pub use json::json_toolkit;
+#[cfg(feature = "persistence")]
 pub use postgres::{register_postgres_tools, PostgresQueryTool};
 pub use pubmed::{register_pubmed_tools, PubmedSearchTool};
 pub use shell::{shell_toolkit, ShellConfig};
 pub use slack::{register_slack_tools, SlackClient};
+#[cfg(feature = "persistence")]
 pub use sql::{register_sql_tools, SqlQueryTool, SqlSchemaTool};
 #[cfg(feature = "duckdb")]
 pub use duckdb::{register_duckdb_tools, DuckDbQueryTool};
