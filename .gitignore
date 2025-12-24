@@ -2,3 +2,10 @@
 agno-reference/
 target_bench/
 .env
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
