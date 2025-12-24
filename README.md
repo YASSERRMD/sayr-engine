@@ -4,8 +4,20 @@
   <img src="assets/logo.png" alt="SAYR Engine Logo" width="200">
 </p>
 
-![Crates.io](https://img.shields.io/crates/v/sayr-engine)
-![License](https://img.shields.io/crates/l/sayr-engine)
+<p align="center">
+  <a href="https://crates.io/crates/sayr-engine"><img src="https://img.shields.io/crates/v/sayr-engine.svg" alt="Crates.io"></a>
+  <a href="https://crates.io/crates/sayr-engine"><img src="https://img.shields.io/crates/d/sayr-engine.svg" alt="Downloads"></a>
+  <a href="https://docs.rs/sayr-engine"><img src="https://docs.rs/sayr-engine/badge.svg" alt="Documentation"></a>
+  <a href="https://github.com/YASSERRMD/sayr-engine/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <a href="https://github.com/YASSERRMD/sayr-engine/actions"><img src="https://github.com/YASSERRMD/sayr-engine/workflows/CI/badge.svg" alt="Build Status"></a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/rust-1.70%2B-orange.svg" alt="Rust Version">
+  <img src="https://img.shields.io/badge/AI-Agent%20Framework-brightgreen" alt="AI Agent">
+  <img src="https://img.shields.io/badge/LLM-Multi%20Provider-blueviolet" alt="Multi Provider">
+  <img src="https://img.shields.io/badge/async-tokio-blue" alt="Async Tokio">
+</p>
 
 A high-performance Rust AI agent runtime inspired by the Agno framework.
 
@@ -256,7 +268,7 @@ cargo tarpaulin
 
 ## License
 
-This project is licensed under the **MIT License**. See the [`LICENSE`](./LICENSE) file for the full license text.
+This project is licensed under the **MIT License**. See the [`LICENSE`](https://github.com/YASSERRMD/sayr-engine/blob/main/LICENSE) file for the full license text.
 
 ## Credits & Acknowledgments
 
