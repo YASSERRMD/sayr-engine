@@ -1307,9 +1307,49 @@ fn fibonacci(n: u64) -> u64 {
 /// Simulate token counting (CPU bound string processing)
 #[pyfunction]
 fn calculate_tokens(text: String) -> usize {
-    // Naive approximation: split by whitespace and process
-    // Rust is efficient at string iteration
     text.split_whitespace().count()
+}
+
+/// Prime sieve up to n - demonstrates real CPU-bound computation
+#[pyfunction]
+fn count_primes(n: usize) -> usize {
+    if n < 2 {
+        return 0;
+    }
+    let mut sieve = vec![true; n + 1];
+    sieve[0] = false;
+    sieve[1] = false;
+    let mut i = 2;
+    while i * i <= n {
+        if sieve[i] {
+            let mut j = i * i;
+            while j <= n {
+                sieve[j] = false;
+                j += i;
+            }
+        }
+        i += 1;
+    }
+    sieve.iter().filter(|&&is_prime| is_prime).count()
+}
+
+/// Hash a text multiple times - simulates heavy cryptographic work
+#[pyfunction]
+fn hash_iterations(text: String, iterations: usize) -> u64 {
+    let mut hash: u64 = 0;
+    let bytes = text.as_bytes();
+    for _ in 0..iterations {
+        for (i, &b) in bytes.iter().enumerate() {
+            hash = hash.wrapping_mul(31).wrapping_add(b as u64).wrapping_add(i as u64);
+        }
+    }
+    hash
+}
+
+/// Sum of squares from 1 to n - tight loop performance
+#[pyfunction]
+fn sum_of_squares(n: u64) -> u64 {
+    (1..=n).map(|x| x * x).sum()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1427,6 +1467,9 @@ fn sayr(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<OpenAIChat>()?;
     m.add_function(wrap_pyfunction!(fibonacci, m)?)?;
     m.add_function(wrap_pyfunction!(calculate_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(count_primes, m)?)?;
+    m.add_function(wrap_pyfunction!(hash_iterations, m)?)?;
+    m.add_function(wrap_pyfunction!(sum_of_squares, m)?)?;
 
     let config = PyModule::new(py, "config")?;
     config.add_class::<PyServerConfig>()?;
