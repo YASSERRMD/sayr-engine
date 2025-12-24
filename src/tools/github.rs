@@ -36,7 +36,7 @@ impl GitHubClient {
         let mut request = self
             .http
             .get(format!("{}{}", self.base_url, endpoint))
-            .header("User-Agent", "agno-rust/0.2.0")
+            .header("User-Agent", "sayr-engine/0.3.0")
             .header("Accept", "application/vnd.github.v3+json");
 
         if let Some(ref token) = self.token {

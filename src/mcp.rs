@@ -1,4 +1,4 @@
-//! MCP (Model Context Protocol) client support for agno-rust.
+//! MCP (Model Context Protocol) client support for sayr-engine.
 //!
 //! This module provides integration with MCP servers, allowing agents to
 //! access tools, resources, and prompts exposed by MCP-compatible servers.
@@ -11,7 +11,7 @@
 //!
 //! # Example
 //! ```rust,ignore
-//! use agno_rust::mcp::{McpClient, StdioTransport};
+//! use sayr_engine::mcp::{McpClient, StdioTransport};
 //!
 //! let transport = StdioTransport::new("npx", &["-y", "@modelcontextprotocol/server-filesystem", "."]);
 //! let client = McpClient::new(transport);
@@ -396,7 +396,7 @@ impl<T: McpTransport> McpClient<T> {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {
-                    "name": "agno-rust",
+                    "name": "sayr-engine",
                     "version": env!("CARGO_PKG_VERSION")
                 }
             })),

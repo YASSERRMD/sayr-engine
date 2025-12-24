@@ -1,6 +1,6 @@
 //! Integration test for telemetry and metrics functionality.
 
-use agno_rust::{MetricsTracker, TelemetryCollector, TelemetryLabels};
+use sayr_engine::{MetricsTracker, TelemetryCollector, TelemetryLabels};
 
 #[tokio::test]
 async fn emits_metrics_and_traces_with_labels() {

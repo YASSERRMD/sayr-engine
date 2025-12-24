@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "libs/agno-core",
-    "cookbook/echo-agent", "libs/agno-py",
+    "libs/sayr-core",
+    "cookbook/echo-agent", "libs/sayr-py",
 ]
 resolver = "2"
 
@@ -21,11 +21,12 @@ thiserror = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "fs", "io-util", "sync"] }
 
 [package]
-name = "agno-rust"
+name = "sayr-engine"
+description = "A high-performance Rust AI agent runtime inspired by the Agno framework"
 version = "0.3.0"
 edition = "2021"
 
-description = "A Rust port of Agno: lightweight agent framework with tools, loops, and LLMs"
+
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/YASSERRMD/agno-rust"

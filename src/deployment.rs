@@ -16,7 +16,7 @@ impl DeploymentPlan {
                 .deployment
                 .container_image
                 .clone()
-                .unwrap_or_else(|| "ghcr.io/agno-agi/agno-rust:latest".into()),
+                .unwrap_or_else(|| "ghcr.io/YASSERRMD/sayr-engine:latest".into()),
             self.config.server.port,
             self.config.server.port,
             self.config.server.host,

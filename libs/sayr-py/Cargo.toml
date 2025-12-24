@@ -1,16 +1,16 @@
 [package]
-name = "agno-py"
+name = "sayr-py"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "agno"
+name = "sayr"
 crate-type = ["cdylib"]
 
 [dependencies]
-agno-rust = { path = "../../", default-features = false }
+sayr-engine = { path = "../../", default-features = false }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

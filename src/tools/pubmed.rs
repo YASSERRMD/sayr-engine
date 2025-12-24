@@ -74,7 +74,7 @@ impl Tool for PubmedSearchTool {
         let search_resp = self
             .client
             .get(&search_url)
-            .header("User-Agent", "agno-rust/0.2.0")
+            .header("User-Agent", "sayr-engine/0.3.0")
             .send()
             .await
             .map_err(|e| crate::error::AgnoError::Protocol(format!("PubMed search failed: {}", e)))?;
@@ -107,7 +107,7 @@ impl Tool for PubmedSearchTool {
         let summary_resp = self
             .client
             .get(&summary_url)
-            .header("User-Agent", "agno-rust/0.2.0")
+            .header("User-Agent", "sayr-engine/0.3.0")
             .send()
             .await
             .map_err(|e| crate::error::AgnoError::Protocol(format!("PubMed summary failed: {}", e)))?;

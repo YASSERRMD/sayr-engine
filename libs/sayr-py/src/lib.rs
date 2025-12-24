@@ -1,6 +1,6 @@
 use pyo3::prelude::*;
 use std::sync::Arc;
-use agno_rust::{Agent as RustAgent, OpenAIClient, CohereClient, LanguageModel};
+use sayr_engine::{Agent as RustAgent, OpenAIClient, CohereClient, LanguageModel};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Models
@@ -181,7 +181,7 @@ fn calculate_tokens(text: String) -> usize {
 }
 
 #[pymodule]
-fn agno(_py: Python, m: &PyModule) -> PyResult<()> {
+fn sayr(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Agent>()?;
     m.add_class::<OpenAIChat>()?;
     m.add_class::<CohereChat>()?;

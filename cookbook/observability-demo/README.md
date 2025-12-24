@@ -3,7 +3,7 @@
 This walkthrough shows how to wire telemetry, metrics, retries, and RBAC into an agent.
 
 ```rust
-use agno_rust::{
+use sayr_engine::{
     AccessController, Action, Agent, GovernanceRole, MetricsTracker, Principal, RetryPolicy,
     StubModel, TelemetryCollector, Tool, ToolRegistry,
 };
@@ -16,13 +16,13 @@ struct HealthCheck;
 impl Tool for HealthCheck {
     fn name(&self) -> &str { "health_check" }
     fn description(&self) -> &str { "Returns ok when the system is healthy" }
-    async fn call(&self, _input: Value) -> agno_rust::Result<Value> {
+    async fn call(&self, _input: Value) -> sayr_engine::Result<Value> {
         Ok(serde_json::json!({"status": "ok"}))
     }
 }
 
 #[tokio::main]
-async fn main() -> agno_rust::Result<()> {
+async fn main() -> sayr_engine::Result<()> {
     let mut registry = ToolRegistry::new();
     registry.register(HealthCheck);
 

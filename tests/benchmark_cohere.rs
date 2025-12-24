@@ -1,4 +1,4 @@
-use agno_rust::{CohereClient, LanguageModel, Message, Role};
+use sayr_engine::{CohereClient, LanguageModel, Message, Role};
 use std::time::Instant;
 use std::env;
 

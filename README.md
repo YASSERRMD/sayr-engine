@@ -1,10 +1,14 @@
-# agno-rust
+# SAYR Engine
 
-A high-performance Rust implementation of the [agno](https://github.com/agno-agi/agno) AI agent framework. Build production-ready AI agents with multi-provider LLM support, extensive toolkits, and enterprise-grade features.
+![Crates.io](https://img.shields.io/crates/v/sayr-engine)
+![License](https://img.shields.io/crates/l/sayr-engine)
 
-[![Rust](https://img.shields.io/badge/rust-1.75+-orange.svg)](https://www.rust-lang.org)
-[![Tests](https://img.shields.io/badge/tests-53%20passing-brightgreen.svg)]()
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)]()
+A high-performance Rust AI agent runtime inspired by the Agno framework.
+
+## Disclaimer
+
+SAYR Engine is an independent, community-driven Rust project inspired by the Agno framework.
+It is not affiliated with, endorsed by, or maintained by the Agno company or its authors.
 
 ## Features
 
@@ -66,17 +70,17 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-agno-rust = "0.3"
+sayr-engine = "0.3"
 ```
 
 ## Quick Start
 
 ```rust
-use agno_rust::{Agent, OpenAIClient, ToolRegistry};
-use agno_rust::tools::{calculator_toolkit, duckduckgo_toolkit};
+use sayr_engine::{Agent, OpenAIClient, ToolRegistry};
+use sayr_engine::tools::{calculator_toolkit, duckduckgo_toolkit};
 
 #[tokio::main]
-async fn main() -> agno_rust::Result<()> {
+async fn main() -> sayr_engine::Result<()> {
     // Create LLM client
     let model = OpenAIClient::from_env()?.with_model("gpt-4o");
     
@@ -101,7 +105,7 @@ async fn main() -> agno_rust::Result<()> {
 ### GitHub Integration
 
 ```rust
-use agno_rust::tools::{register_github_tools, GitHubClient};
+use sayr_engine::tools::{register_github_tools, GitHubClient};
 
 let mut tools = ToolRegistry::new();
 register_github_tools(&mut tools); // Uses GITHUB_TOKEN env var
@@ -112,7 +116,7 @@ register_github_tools(&mut tools); // Uses GITHUB_TOKEN env var
 ### Slack Integration
 
 ```rust
-use agno_rust::tools::{register_slack_tools, SlackClient};
+use sayr_engine::tools::{register_slack_tools, SlackClient};
 
 let mut tools = ToolRegistry::new();
 register_slack_tools(&mut tools, std::env::var("SLACK_BOT_TOKEN")?);
@@ -123,7 +127,7 @@ register_slack_tools(&mut tools, std::env::var("SLACK_BOT_TOKEN")?);
 ### SQL Database
 
 ```rust
-use agno_rust::tools::register_sql_tools;
+use sayr_engine::tools::register_sql_tools;
 
 let mut tools = ToolRegistry::new();
 register_sql_tools(&mut tools, "/path/to/database.db");
@@ -134,7 +138,7 @@ register_sql_tools(&mut tools, "/path/to/database.db");
 ### Academic Research
 
 ```rust
-use agno_rust::tools::{register_arxiv_tools, register_pubmed_tools};
+use sayr_engine::tools::{register_arxiv_tools, register_pubmed_tools};
 
 let mut tools = ToolRegistry::new();
 register_arxiv_tools(&mut tools);   // Search arXiv papers
@@ -146,7 +150,7 @@ register_pubmed_tools(&mut tools);  // Search PubMed
 ## Memory Strategies
 
 ```rust
-use agno_rust::{WindowedMemoryStrategy, SummarizedMemoryStrategy};
+use sayr_engine::{WindowedMemoryStrategy, SummarizedMemoryStrategy};
 
 // Keep last 10 messages
 let strategy = WindowedMemoryStrategy::new(10);
@@ -158,7 +162,7 @@ let strategy = SummarizedMemoryStrategy::new(5, 5);
 ## Guardrails
 
 ```rust
-use agno_rust::guardrails::{PiiGuardrail, PromptInjectionGuardrail, GuardrailChain};
+use sayr_engine::guardrails::{PiiGuardrail, PromptInjectionGuardrail, GuardrailChain};
 
 let mut chain = GuardrailChain::new();
 chain.add(PiiGuardrail::new());
@@ -174,7 +178,7 @@ match chain.validate("My SSN is 123-45-6789") {
 ## MCP Integration
 
 ```rust
-use agno_rust::mcp::{McpClient, StdioTransport, McpTools};
+use sayr_engine::mcp::{McpClient, StdioTransport, McpTools};
 
 // Connect to MCP server
 let transport = StdioTransport::spawn("npx", &["-y", "@modelcontextprotocol/server-filesystem", "/tmp"])?;
@@ -189,7 +193,7 @@ mcp_tools.register_all(&mut tools).await?;
 ## Observability
 
 ```rust
-use agno_rust::{init_tracing, init_prometheus_registry};
+use sayr_engine::{init_tracing, init_prometheus_registry};
 
 // Initialize OpenTelemetry tracing
 init_tracing("my-agent", Some("http://otel-collector:4317"));
@@ -201,7 +205,7 @@ init_prometheus_registry();
 ## Architecture
 
 ```
-agno-rust/
+sayr-engine/
 ├── src/
 │   ├── agent.rs        # Core agent loop
 │   ├── llm.rs          # 10 LLM provider clients
@@ -213,7 +217,7 @@ agno-rust/
 │   ├── reasoning.rs    # Chain-of-thought
 │   └── server.rs       # HTTP runtime
 ├── libs/
-│   └── agno-py/        # PyO3 Python bindings
+│   └── sayr-py/        # PyO3 Python bindings
 ├── cookbook/           # Example agents
 └── scripts/            # Development utilities
 ```
@@ -223,7 +227,7 @@ agno-rust/
 You can use the Rust implementation from Python with familiar Agno syntax:
 
 ```python
-from agno import Agent, OpenAIChat
+from sayr import Agent, OpenAIChat
 
 agent = Agent(
     model=OpenAIChat(id="gpt-4"),
