@@ -1,9 +1,0 @@
-/Users/mdyasser/Documents/projects/agno-rust/agno-rust/target_bench/release/deps/opentelemetry_semantic_conventions-250dd77804d8bf29.d: /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/lib.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/resource.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/trace.rs
-
-/Users/mdyasser/Documents/projects/agno-rust/agno-rust/target_bench/release/deps/libopentelemetry_semantic_conventions-250dd77804d8bf29.rlib: /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/lib.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/resource.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/trace.rs
-
-/Users/mdyasser/Documents/projects/agno-rust/agno-rust/target_bench/release/deps/libopentelemetry_semantic_conventions-250dd77804d8bf29.rmeta: /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/lib.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/resource.rs /Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/trace.rs
-
-/Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/lib.rs:
-/Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/resource.rs:
-/Users/mdyasser/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/opentelemetry-semantic-conventions-0.14.0/src/trace.rs:
